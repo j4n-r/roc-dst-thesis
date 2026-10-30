@@ -1,92 +1,160 @@
----
-tags:
-  - atomic
-up:
-  - "[[Bachelor Thesis - Roc DST]]"
----
-## Working Title
- _The Platform as Simulation Boundary: Deterministic Simulation Testing of Distributed Systems with Roc_
+# Exposé (v2, 2026-10-24)
+
+Changes from [v1](expose-v1.md): the design now targets **basic-cli**, Roc's standard
+command-line platform, instead of a custom platform API. A trimmed, simulatable subset of
+basic-cli plus a simulation host replaces the planned simulation platform, and upstream
+basic-cli replaces the planned production platform. Prototypes and Roc prior art are added.
+
+## Working title
+
+_The Platform as Simulation Boundary: Deterministic Simulation Testing of Distributed Systems with Roc_
+
 ## Problem and motivation
 
-Distributed systems fail in ways that are hard to reproduce: the bugs depend on message order, timing, crashes and network faults. Deterministic simulation testing (DST) addresses this by running the whole system in a simulated environment driven by a single seed, so that any failure can be replayed exactly. Its use at FoundationDB and TigerBeetle shows that it works, but it needs a great deal of discipline. Every source of nondeterminism (clock, randomness, network, thread scheduling) has to be routed through a replaceable interface, and a single leak breaks reproducibility. Existing approaches either rely on convention, patch the runtime, or simulate the whole machine.
+Distributed systems fail in ways that are hard to reproduce: the bugs depend on message
+order, timing, crashes and network faults. Deterministic simulation testing (DST) runs the
+whole system in a simulated environment driven by a single seed, so that any failure can be
+replayed exactly. FoundationDB and TigerBeetle show that it works, but it takes a great deal
+of discipline. Every source of nondeterminism (clock, randomness, network, thread
+scheduling) has to go through a replaceable interface, and a single leak breaks
+reproducibility. Existing approaches rely on convention, patch the runtime, or simulate the
+whole machine.
 
-Roc takes a different route. A Roc application cannot perform side effects itself: all I/O goes through the *platform* it runs on, and the compiler enforces this. This thesis investigates whether that platform boundary can serve as the simulation boundary, so that one application runs unchanged on a simulation platform and a production platform.
+Roc takes a different route. A Roc application cannot perform side effects itself: all I/O
+goes through the *platform* it runs on, and the compiler enforces this. A platform consists
+of a Roc API (the modules apps import) and a native *host* that implements it. This thesis
+investigates whether that boundary can serve as the simulation boundary: the same
+application is built once against upstream basic-cli and once against a simulation host,
+without changing its code.
 
 ## Background and related research
 
-- **DST in practice:** FoundationDB simulates network, disk and machines within a single process (Zhou et al., 2021; Wilson, 2014). TigerBeetle's VOPR runs entire clusters in simulation. Antithesis makes unmodified software deterministic inside a hypervisor.
-- **Library and runtime level:** madsim and turmoil replace the async runtime in Rust. Coyote/P# lets services declare their nondeterminism and controls it during testing (Deligiannis et al., 2021).
-- **Architecture by convention:** sans-IO protocol libraries, "functional core, imperative shell", and etcd/raft, a Raft core with no I/O driven by explicit ticks and messages. All of these keep effects at the edge, but only by discipline.
-- **Implementation-level model checking:** MODIST, SAMC and FlyMC intercept messages and timeouts of unmodified systems (Yang et al., 2009; Leesatapornwongsa et al., 2014; Lukman et al., 2019). They control only what they intercept.
+- **DST in practice:** FoundationDB simulates network, disk and machines within a single
+  process (Zhou et al., 2021; Wilson, 2014). TigerBeetle's VOPR runs entire clusters in
+  simulation. Antithesis makes unmodified software deterministic inside a hypervisor.
+- **Library and runtime level:** madsim and turmoil replace the async runtime in Rust.
+  Coyote/P# lets services declare their nondeterminism and controls it during testing
+  (Deligiannis et al., 2021).
+- **Architecture by convention:** sans-IO protocol libraries, "functional core, imperative
+  shell", and etcd/raft, a Raft core with no I/O. These keep effects at the edge only by
+  discipline: etcd/raft must be driven by explicit ticks and messages so that it never reads
+  the clock or touches the network itself. In Roc the platform boundary enforces this, so
+  the application needs no such abstraction.
+- **Implementation-level model checking:** MODIST, SAMC and FlyMC intercept messages and
+  timeouts of unmodified systems (Yang et al., 2009; Leesatapornwongsa et al., 2014;
+  Lukman et al., 2019). They control only what they intercept.
+- **Host swapping in Roc:** roc-signals builds one app against a browser host or a
+  simulated-DOM test host. roc-gui embeds headless spec runners in the shipped binary
+  behind a flag. Both are driven by hand-written scripts and run a single app instance
+  (Boswell, 2026a, 2026b).
 - **Raft:** the case-study protocol (Ongaro & Ousterhout, 2014; Ongaro, 2014).
-- **Roc:** a pure functional language in which platforms provide all I/O primitives.
+- **Correctness:** linearizability as the property of the key-value store (Herlihy & Wing, 1990).
 
-**Gap:** none of the sources found so far examines a language-enforced effect boundary as the boundary of a deterministic simulation.
+**Gap:** Roc already swaps hosts for scripted testing, but no source found so far uses a
+language-enforced effect boundary for *seeded* simulation of a *distributed* system: many
+instances in one process, with randomized fault injection and virtual time. The Roc
+community confirmed that it knows of no such work.
 
 ## Research question and objectives
 
-_How can Roc's platform model be used to run one distributed system unchanged under deterministic simulation and in production, and what does this approach gain and lose compared with existing approaches?_
+_How can Roc's platform model be used to run one distributed system unchanged under
+deterministic simulation and in production, and what does this approach gain and lose
+compared with existing approaches?_
+
+"Unchanged" means that the same application source builds against upstream basic-cli and
+against the simulation, with no code or configuration differences inside the app.
 
 Objectives:
-1. Design a Roc platform API that a Raft node needs: messages, timers, client requests, and state inspection for invariant checks.
-2. Implement a simulation platform and a production platform behind that API, with Rust hosts.
-3. Implement Raft (leader election, log replication) with an in-memory key-value store as a Roc application that runs on both.
-4. Evaluate the approach and compare it with existing DST approaches.
+1. **Simulatable subset:** a copy of basic-cli's Roc API that only *deletes* what the sim does
+   not support (TCP, time, sleep, stdout, arguments, random seed remain). An app that
+   compiles against the subset is guaranteed to run in the sim; one that uses an
+   unsupported effect fails to compile.
+2. **Simulation host (Rust)** for that subset: several app instances in one process, a
+   seeded scheduler that runs one instance at a time, virtual time, and TCP faults (delay,
+   loss, partitions, partial reads, resets). It writes a complete trace of every effect.
+3. **Case study:** Raft (leader election, log replication) with an in-memory key-value
+   store, written as an ordinary basic-cli app in an assertion-heavy style. The Raft module
+   receives its effects (send, receive, time, randomness) as functions, so its user chooses
+   the transport. It performs them itself, with no sans-IO core or explicit ticks, so the
+   determinism comes from the platform and not from the code style.
+4. **Checking:** generic checks that need no app knowledge (crash, hang, determinism,
+   memory budget) and an app-specific linearizability checker that reads the trace.
+5. **Evaluation and comparison** with existing DST approaches.
 
-Out of scope: persistence (only if time remains), sharding, and evaluating how effective DST is at finding bugs.
+Out of scope: persistence and a simulated filesystem, HTTP and the remaining basic-cli
+modules, sharding, upstreaming the sim into basic-cli, and evaluating how effective DST is
+at finding bugs.
 
 ## Methodology
 
-The thesis follows Design Science Research (Hevner et al., 2004; Peffers et al., 2007): build an artefact, then evaluate it against the research question.
+The thesis follows Design Science Research (Hevner et al., 2004; Peffers et al., 2007): build
+an artefact, then evaluate it against the research question.
 
-1. **Problem analysis:** From the literature, identify where nondeterminism enters a distributed system (time, randomness, network, scheduling) and how existing approaches control it. This yields the requirements for the platform API and the criteria for the comparison.
-2. **Design:** The platform API, shared by both platforms.
-3. **Implementation:** A simulation platform (seeded PRNG, logical time, network faults, crashes), a production platform (sockets, real clock), and the Raft application.
+1. **Problem analysis:** from the literature, identify where nondeterminism enters a
+   distributed system and how existing approaches control it. This yields the subset of
+   effects to simulate and the criteria for the comparison.
+2. **Design:** the simulatable subset of basic-cli, the scheduler, the fault model and the
+   trace format.
+3. **Implementation:** the simulation host and the Raft key-value app.
 4. **Evaluation:**
-   - *Feasibility:* the same application code runs on both platforms without changes.
-   - *Determinism:* the same seed reproduces an identical trace.
-   - *Comparison:* a criteria-based comparison with existing approaches, including for each source of nondeterminism whether it is impossible, caught or silently allowed.
-
-   An injected Raft bug serves as a canary to show that the simulation works; how effective DST is at finding bugs is out of scope.
+   - *Feasibility:* the app runs unchanged on upstream basic-cli and in the sim.
+   - *Determinism:* the same seed reproduces an identical trace, including under parallel
+     load. A prototype already meets this for 200 seeds.
+   - *Canary:* an injected Raft bug is found by a seed and replayed from it.
+   - *Comparison* on paper, criteria-based: for each source of nondeterminism (clock,
+     randomness, threads, hash order, sockets, allocation), whether it is impossible,
+     caught or silently allowed in each approach.
 
 ## Expected contribution
 
-- A platform API design that makes Roc's platform boundary usable as a simulation boundary.
-- An open-source implementation of a narrow simulation platform, a production platform, and a Raft key-value store that runs on both.
-- A comparison of the platform-model approach with library-level, system-level and convention-based DST, including a classification of where nondeterminism can still leak.
-- An experience report on the practical limits of the approach, e.g. host code outside the simulation and the maturity of a pre-1.0 language.
+- A simulatable subset of basic-cli and a simulation host for it, usable by any app within
+  the subset, with app-specific checkers plugged in through the trace.
+- A Raft key-value store that runs unchanged on upstream basic-cli and in the simulation.
+- A comparison of the platform-model approach with library-level, system-level and
+  convention-based DST, including where nondeterminism can still leak.
+- An experience report on the practical limits, e.g. host code outside the simulation and
+  the maturity of a pre-1.0 language.
 
 ## Preliminary chapter outline
 
 1. Introduction
-2. Background: distributed systems and Raft, nondeterminism, DST, Roc platforms
-3. Related work: approaches to deterministic simulation
-4. Design of the platform API
-5. Implementation: simulation platform, production platform, Raft application
+2. Background: distributed systems and Raft, nondeterminism, DST, Roc platforms and hosts
+3. Related work: approaches to deterministic simulation, host swapping in Roc
+4. Design: the simulatable subset, scheduler, fault model, trace and checkers
+5. Implementation: simulation host, Raft key-value app
 6. Evaluation
 7. Discussion: gains, losses, limitations
 8. Conclusion
 
 ## Risks
 
-- **Roc is pre-1.0:** the compiler and the glue generator are changing; known glue bugs already require workarounds.
-- **Implementation effort:** mitigated by the narrow scope (no persistence, no sharding).
-- **"Unchanged" may need a shared package:** each Roc app names exactly one platform, so running the same Raft code on two platforms may require a shared Raft package with two thin app wrappers.
+- **Roc is pre-1.0:** the compiler and glue generator change. Development tracks nightly; one
+  compiler and one basic-cli revision are pinned for the evaluation.
+- **basic-cli drift:** signatures can change between releases. Mitigated by pinning and by a
+  check that the subset differs from upstream only by deletions.
+- **Running several app instances in one process** works in a prototype but is not
+  documented as supported. Asked in the Roc community.
+- **Scope:** simulating at the TCP level is more work than a message-level API. Mitigated by
+  the narrow subset; a message-level platform (as in v1) is the fallback.
 
 ## Schedule
 
 Start: 2026-10-25. Deadline: TBD.
 
 1. Literature review and exposé
-2. Platform API design and simulation platform
-3. Raft application
-4. Production platform
-5. Evaluation and comparison
-6. Writing and buffer
+2. Simulation host skeleton: basic-cli's hello-world example runs in the sim
+3. Simulated TCP: basic-cli's TCP client example runs against a simulated peer
+4. Raft key-value app on upstream basic-cli
+5. Raft in the sim, checkers, canary
+6. Evaluation and comparison
+7. Writing and buffer
 
 ## References
 
+- Boswell, L. (2026a). roc-signals. https://github.com/lukewilliamboswell/roc-signals
+- Boswell, L. (2026b). roc-gui. https://github.com/lukewilliamboswell/roc-gui
 - Deligiannis, P., Ganapathy, N., Lal, A., Qadeer, S. (2021). Building Reliable Cloud Services Using Coyote Actors. *ACM SoCC*.
+- Herlihy, M. P., Wing, J. M. (1990). Linearizability: A Correctness Condition for Concurrent Objects. *ACM TOPLAS* 12(3).
 - Hevner, A. R., March, S. T., Park, J., Ram, S. (2004). Design Science in Information Systems Research. *MIS Quarterly* 28(1).
 - Leesatapornwongsa, T., Hao, M., Joshi, P., Lukman, J. F., Gunawi, H. S. (2014). SAMC: Semantic-Aware Model Checking for Fast Discovery of Deep Bugs in Cloud Systems. *OSDI*.
 - Lukman, J. F. et al. (2019). FlyMC: Highly Scalable Testing of Complex Interleavings in Distributed Systems. *EuroSys*.

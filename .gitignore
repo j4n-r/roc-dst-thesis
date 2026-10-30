@@ -1,0 +1,6 @@
+target/
+.direnv/
+result
+# Built by each experiment's build.sh; the other link inputs in platform/targets are committed.
+experiments/*/platform/targets/*/libhost.a
+experiments/*/main
