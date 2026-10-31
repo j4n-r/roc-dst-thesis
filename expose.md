@@ -1,9 +1,10 @@
-# Exposé (v2, 2026-10-24)
+# Exposé (v3, 2026-10-31)
 
-Changes from [v1](expose-v1.md): the design now targets **basic-cli**, Roc's standard
-command-line platform, instead of a custom platform API. A trimmed, simulatable subset of
-basic-cli plus a simulation host replaces the planned simulation platform, and upstream
-basic-cli replaces the planned production platform. Prototypes and Roc prior art are added.
+Changes from v2 (in git history): after the meeting with the professor on 2026-10-27, the
+**comparison with existing DST approaches is the main question**. It is done from their papers
+and source code, not by reimplementing the case study in other tools. The simulation host and
+the Raft app remain, as the Roc side of the comparison. Deadline: four months after
+registration, which is planned for mid-November 2026.
 
 ## Working title
 
@@ -57,33 +58,47 @@ community confirmed that it knows of no such work.
 
 ## Research question and objectives
 
-_How can Roc's platform model be used to run one distributed system unchanged under
-deterministic simulation and in production, and what does this approach gain and lose
-compared with existing approaches?_
+_How does deterministic simulation testing through Roc's platform model compare with existing
+approaches, in what it requires of the application and in which sources of nondeterminism it
+rules out?_
+
+Sub-questions:
+1. What do existing DST approaches (FoundationDB, TigerBeetle, madsim and turmoil) require of
+   the application, and how does each control every source of nondeterminism? Answered from
+   their papers and source code.
+2. Can a distributed system written as an ordinary basic-cli app, using none of those
+   practices, run unchanged in production and under deterministic simulation? Answered by
+   building it.
+3. Where can nondeterminism still leak in each approach, Roc's included, and what does the
+   Roc approach gain and lose?
 
 "Unchanged" means that the same application source builds against upstream basic-cli and
 against the simulation, with no code or configuration differences inside the app.
 
 Objectives:
-1. **Simulatable subset:** a copy of basic-cli's Roc API that only *deletes* what the sim does
+1. **Comparison framework and analysis:** criteria from the literature (sources of
+   nondeterminism; practices required of the app and its dependencies), applied to
+   FoundationDB, TigerBeetle, madsim and turmoil at pinned revisions, with a code reference
+   for every claim.
+2. **Simulatable subset:** a copy of basic-cli's Roc API that only *deletes* what the sim does
    not support (TCP, time, sleep, stdout, arguments, random seed remain). An app that
    compiles against the subset is guaranteed to run in the sim; one that uses an
    unsupported effect fails to compile.
-2. **Simulation host (Rust)** for that subset: several app instances in one process, a
+3. **Simulation host (Rust)** for that subset: several app instances in one process, a
    seeded scheduler that runs one instance at a time, virtual time, and TCP faults (delay,
    loss, partitions, partial reads, resets). It writes a complete trace of every effect.
-3. **Case study:** Raft (leader election, log replication) with an in-memory key-value
+4. **Case study:** Raft (leader election, log replication) with an in-memory key-value
    store, written as an ordinary basic-cli app in an assertion-heavy style. The Raft module
    receives its effects (send, receive, time, randomness) as functions, so its user chooses
    the transport. It performs them itself, with no sans-IO core or explicit ticks, so the
    determinism comes from the platform and not from the code style.
-4. **Checking:** generic checks that need no app knowledge (crash, hang, determinism,
+5. **Checking:** generic checks that need no app knowledge (crash, hang, determinism,
    memory budget) and an app-specific linearizability checker that reads the trace.
-5. **Evaluation and comparison** with existing DST approaches.
+6. **Evaluation and comparison** with existing DST approaches.
 
 Out of scope: persistence and a simulated filesystem, HTTP and the remaining basic-cli
-modules, sharding, upstreaming the sim into basic-cli, and evaluating how effective DST is
-at finding bugs.
+modules, sharding, upstreaming the sim into basic-cli, evaluating how effective DST is
+at finding bugs, and reimplementing the case study with the other approaches.
 
 ## Methodology
 
@@ -93,6 +108,9 @@ an artefact, then evaluate it against the research question.
 1. **Problem analysis:** from the literature, identify where nondeterminism enters a
    distributed system and how existing approaches control it. This yields the subset of
    effects to simulate and the criteria for the comparison.
+   **Analysis of existing approaches:** for FoundationDB, TigerBeetle, madsim and turmoil,
+   read the papers, talks and source code and record, per criterion, the mechanism and where
+   it lives in the code.
 2. **Design:** the simulatable subset of basic-cli, the scheduler, the fault model and the
    trace format.
 3. **Implementation:** the simulation host and the Raft key-value app.
@@ -101,9 +119,10 @@ an artefact, then evaluate it against the research question.
    - *Determinism:* the same seed reproduces an identical trace, including under parallel
      load. A prototype already meets this for 200 seeds.
    - *Canary:* an injected Raft bug is found by a seed and replayed from it.
-   - *Comparison* on paper, criteria-based: for each source of nondeterminism (clock,
-     randomness, threads, hash order, sockets, allocation), whether it is impossible,
-     caught or silently allowed in each approach.
+   - *Comparison,* criteria-based, from papers and source code: for each source of
+     nondeterminism (clock, randomness, threads, hash order, sockets, allocation), whether
+     it is impossible, caught or silently allowed in each approach, and which practices the
+     app and its dependencies must follow.
 
 ## Expected contribution
 
@@ -119,11 +138,12 @@ an artefact, then evaluate it against the research question.
 
 1. Introduction
 2. Background: distributed systems and Raft, nondeterminism, DST, Roc platforms and hosts
-3. Related work: approaches to deterministic simulation, host swapping in Roc
+3. Existing approaches: comparison criteria; FoundationDB, TigerBeetle, madsim, turmoil;
+   host swapping in Roc
 4. Design: the simulatable subset, scheduler, fault model, trace and checkers
 5. Implementation: simulation host, Raft key-value app
-6. Evaluation
-7. Discussion: gains, losses, limitations
+6. Evaluation of the Roc approach
+7. Comparison and discussion: gains, losses, where nondeterminism leaks
 8. Conclusion
 
 ## Risks
@@ -139,15 +159,14 @@ an artefact, then evaluate it against the research question.
 
 ## Schedule
 
-Start: 2026-10-25. Deadline: TBD.
+Start: 2026-11-02. Registration: about mid-November 2026. Deadline: four months after
+registration, about mid-March 2027. 30 hours per week. Task list in
+[notes/plan.md](notes/plan.md).
 
-1. Literature review and exposé
-2. Simulation host skeleton: basic-cli's hello-world example runs in the sim
-3. Simulated TCP: basic-cli's TCP client example runs against a simulated peer
-4. Raft key-value app on upstream basic-cli
-5. Raft in the sim, checkers, canary
-6. Evaluation and comparison
-7. Writing and buffer
+1. Comparison criteria and analysis of existing approaches, next to the sim host and simulated TCP (Nov)
+2. Raft key-value app on upstream basic-cli, then in the sim (Dec)
+3. Checkers, canary, applying the comparison to Roc (Jan)
+4. Writing, revision and buffer (Feb–Mar)
 
 ## References
 

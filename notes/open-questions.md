@@ -41,5 +41,5 @@ Every architecture decision in the app must be justified without DST (transport 
 choose the protocol; one-way messages: basic-cli has no select).
 
 ## Thesis
-- Deadline.
+- Deadline: four months after registration (about mid-March 2027), settled 2026-10-27.
 - Confirm the "unchanged" definition and the basic-cli-dst direction with the professor.
