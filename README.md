@@ -1,6 +1,6 @@
 # Bachelor thesis: Roc platform model for deterministic simulation testing
 
-- [expose.md](expose.md): current exposé (v3, 2026-10-31; earlier versions are in git history)
+- [expose.typ](expose.typ): the one-page exposé (build command at the top of the file; needs `.env`, see `.env.example`; earlier long versions are in git history)
 - [notes/reading.md](notes/reading.md): Zotero triage (essential, cite only, skip) and missing sources
 - [notes/design.md](notes/design.md): design decisions and their reasons
 - [notes/findings.md](notes/findings.md): experiment results, basic-cli facts, prior art, Zulip feedback

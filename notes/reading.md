@@ -1,7 +1,7 @@
 # Reading list (2026-10-31)
 
 Triage of the Zotero collection "Bachelor Thesis – Roc DST" (64 items) against the research
-question in [expose.md](../expose.md). Keys are Zotero item keys.
+question in [expose.typ](../expose.typ). Keys are Zotero item keys.
 
 - **Essential:** read closely. These answer a sub-question, are a comparison subject, or are a
   foundation the thesis must cite.
