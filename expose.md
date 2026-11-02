@@ -160,8 +160,7 @@ an artefact, then evaluate it against the research question.
 ## Schedule
 
 Start: 2026-11-02. Registration: about mid-November 2026. Deadline: four months after
-registration, about mid-March 2027. 30 hours per week. Task list in
-[notes/plan.md](notes/plan.md).
+registration, about mid-March 2027. 30 hours per week.
 
 1. Comparison criteria and analysis of existing approaches, next to the sim host and simulated TCP (Nov)
 2. Raft key-value app on upstream basic-cli, then in the sim (Dec)
