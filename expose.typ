@@ -34,7 +34,7 @@ from identical source, using only a subset of basic-cli and no simulation-specif
 production and under deterministic simulation? (2) Which sources of nondeterminism does the
 platform boundary control, and where can they still leak, for example in the host, the
 compiler or dependencies? (3) Which restrictions does the approach place on the application
-and its dependencies, compared with the existing approaches?
+and its dependencies?
 
 *Approach.*
 + Derive evaluation criteria from DST practice and research on flaky tests: the sources of nondeterminism (for
