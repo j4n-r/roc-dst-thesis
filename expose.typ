@@ -3,13 +3,13 @@
 // sh -c '. ./.env && typst compile --input student-id="$STUDENT_ID" expose.typ'
 #set page(paper: "a4", margin: (x: 2.5cm, y: 2cm))
 #set text(size: 11pt, lang: "en")
-#set par(justify: true, leading: 0.6em, spacing: 1em)
-#set enum(spacing: 0.6em)
+#set par(justify: true, leading: 0.65em, spacing: 1.4em)
+#set enum(spacing: 0.8em)
 
 #align(center)[
   #text(size: 13pt, weight: "bold")[Exposé: Bachelor's Thesis] \
   Jan Rüggeberg, student ID #sys.inputs.at("student-id", default: "[student ID]") \
-  #text(size: 10pt)[HWR Berlin · Supervisor: Prof. Dr. Alexander Eck]
+  #text(size: 10pt)[HWR Berlin · Supervisor: Prof. Dr. Alexander Eck · 3 November 2026]
 ]
 
 *Proposed title.* _The Platform as Simulation Boundary: How Suitable Is Roc's Platform Model
@@ -29,9 +29,7 @@ simulation. Roc projects already use alternative hosts or test modes for scripte
 no work was found that uses this boundary for seeded simulation of a distributed system.
 
 *Goal.* The thesis answers: _To what extent is Roc's platform model suitable for deterministic
-simulation testing of distributed systems?_ Here, suitable means that the application runs
-unchanged in both environments, every run is reproducible from its seed, and the remaining
-paths for nondeterminism are known. Sub-questions: (1) Can a distributed system run
+simulation testing of distributed systems?_ Sub-questions: (1) Can a distributed system run
 from identical source, using only a subset of basic-cli and no simulation-specific code, in
 production and under deterministic simulation? (2) Which sources of nondeterminism does the
 platform boundary control, and where can they still leak, for example in the host, the
@@ -46,7 +44,7 @@ and its dependencies, compared with the existing approaches?
   virtual time, network faults, complete trace) and a Raft key-value store as case study.
 + Evaluate: the app runs unchanged on upstream basic-cli and in the simulation; one seed
   reproduces an identical trace; an injected Raft bug is found and replayed from its seed;
-  results are checked for linearizability; an unmodified third-party package works in both.
+  the client operations are checked for linearizability; an unmodified third-party package works in both.
 + Apply the criteria to the Roc approach, using the prototype and the host code, and discuss
   the results against the existing approaches, which form the related work.
 
