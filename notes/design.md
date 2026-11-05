@@ -119,7 +119,7 @@ roc-dst/
 ├── basic-cli-dst/       # trimmed platform/*.roc + deletion-only check
 ├── sim-host/src/        # lib.rs (exports), scheduler, rng, tcp, clock, io, alloc, config
 ├── checker/             # KV linearizability, reads the trace
-└── experiments/         # baton, messaging, counters
+└── experiments/         # baton, platform-compatibility, subset-link
 ```
 
 ## Build order (decided 2026-10-25)

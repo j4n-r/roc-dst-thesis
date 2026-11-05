@@ -6,8 +6,7 @@
 - [notes/criteria.md](notes/criteria.md): evaluation criteria (sources of nondeterminism, practices required of the app, simulator properties)
 - [notes/findings.md](notes/findings.md): experiment results, basic-cli facts, prior art, Zulip feedback
 - [notes/open-questions.md](notes/open-questions.md)
-- [experiments/](experiments/): `baton`, `messaging`, `counters` (each with a flake and `build.sh`), `platform-compatibility` (unchanged source on upstream), and `subset-link` (full API trim and subset-only host linking)
-- [material/pitch.html](material/pitch.html): thesis pitch
+- [experiments/](experiments/): `baton` (several blocking nodes under a seeded scheduler; flake and `build.sh`), `platform-compatibility` (unchanged source on upstream), and `subset-link` (full API trim and subset-only host linking)
 - [roc_sources/](roc_sources/): upstream basic-cli and the Roc compiler as git submodules, for
   reading and for the experiments' scripts. Clone with `git clone --recurse-submodules`, or run
   `git submodule update --init` afterwards.
