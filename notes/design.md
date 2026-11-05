@@ -128,6 +128,13 @@ Literature review first. Then build the sim host and the KV store together, so t
 first app that drives the simulator. Then run the same app on upstream basic-cli and check that
 it behaves as it should. Where Raft fits in is still open.
 
+- **Safeguard (2026-11-05): run on upstream from the first version.** Every version of the KV app
+  is also built with `--replace-dep` and run on upstream basic-cli, not only at the end. Building
+  the app next to the sim risks shaping it around the sim without noticing, which is the
+  co-design FoundationDB (Flow) and TigerBeetle (I/O interfaces, TigerStyle) rely on and this
+  thesis claims a Roc app doesn't need. Running on upstream keeps every app decision justifiable
+  without DST, and the same runs serve as the differential test.
+
 ## Raft app
 
 - **Requirement:** users of the Raft library choose how messages are delivered (TCP, HTTP, …).
