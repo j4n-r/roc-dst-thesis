@@ -128,12 +128,22 @@ Literature review first. Then build the sim host and the KV store together, so t
 first app that drives the simulator. Then run the same app on upstream basic-cli and check that
 it behaves as it should. Where Raft fits in is still open.
 
-- **Safeguard (2026-11-05): run on upstream from the first version.** Every version of the KV app
-  is also built with `--replace-dep` and run on upstream basic-cli, not only at the end. Building
-  the app next to the sim risks shaping it around the sim without noticing, which is the
-  co-design FoundationDB (Flow) and TigerBeetle (I/O interfaces, TigerStyle) rely on and this
-  thesis claims a Roc app doesn't need. Running on upstream keeps every app decision justifiable
-  without DST, and the same runs serve as the differential test.
+- **Build order is not evidence (2026-11-05).** Nobody can verify which was written first, so
+  writing the app on basic-cli before the sim would prove nothing. The order is chosen for
+  convenience: sim first or together, because failures reproduce from a seed and are easy to
+  debug there, unlike on real TCP.
+- **The "unchanged" claim rests on three checks anyone can repeat:**
+  1. The app's source passes the criteria check: it uses none of the practices existing DST
+     approaches require of the app (e.g. injected clocks, a sans-IO core, a custom runtime).
+  2. Code not written for this thesis runs unchanged in the sim: basic-cli's examples and the
+     third-party package.
+  3. The same source runs on upstream basic-cli with `--replace-dep`.
+- **Safeguard while building: run on upstream from the first version.** Every version of the KV
+  app is also built with `--replace-dep` and run on upstream basic-cli. This is discipline, not
+  proof: it catches changes that only make sense because of the sim, i.e. the co-design that
+  FoundationDB (Flow) and TigerBeetle (I/O interfaces, TigerStyle) rely on. The same runs serve
+  as the differential test. Debugging stays in the sim: when upstream fails and the sim doesn't,
+  make the sim reproduce it, then debug there.
 
 ## Raft app
 
