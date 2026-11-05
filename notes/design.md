@@ -137,13 +137,23 @@ it behaves as it should. Where Raft fits in is still open.
      approaches require of the app (e.g. injected clocks, a sans-IO core, a custom runtime).
   2. Code not written for this thesis runs unchanged in the sim: basic-cli's examples and the
      third-party package.
-  3. The same source runs on upstream basic-cli with `--replace-dep`.
+  3. The same source works correctly on upstream basic-cli (built with `--replace-dep`): for the
+     KV app, clients' puts and gets succeed and return correct results. That the build succeeds
+     is only a sanity check: the platform deletes from upstream without changing signatures, so
+     it should always build. A failure would point to an edge of the subset guarantee (e.g. an
+     app module named like a deleted platform module, untested) or a wrong `--replace-dep`.
+- **Compatibility is not fidelity.** Check 3 says the app is a real basic-cli program. The
+  differential test (sim and upstream give the same stdout, exit codes and error tags) says the
+  sim behaves like basic-cli and belongs to the evaluation of the simulated TCP. Both use the
+  same builds, but either can fail without the other.
 - **Safeguard while building: run on upstream from the first version.** Every version of the KV
   app is also built with `--replace-dep` and run on upstream basic-cli. This is discipline, not
   proof: it catches changes that only make sense because of the sim, i.e. the co-design that
-  FoundationDB (Flow) and TigerBeetle (I/O interfaces, TigerStyle) rely on. The same runs serve
-  as the differential test. Debugging stays in the sim: when upstream fails and the sim doesn't,
-  make the sim reproduce it, then debug there.
+  FoundationDB (Flow) and TigerBeetle (I/O interfaces, TigerStyle) rely on. Debugging stays in
+  the sim: when upstream fails and the sim doesn't, make the sim reproduce it, then debug there.
+- **CI (once the repo has a remote, the sim host and a first app exist):** on every push, build
+  the app against basic-cli-dst and with `--replace-dep`, run the workload on both hosts, and
+  compare. One job covers the build sanity check, check 3 and the differential test.
 
 ## Raft app
 
