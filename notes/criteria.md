@@ -17,7 +17,8 @@ What the criteria are for:
 
 ## A. Sources of nondeterminism
 
-Luo et al. classify the root causes of 201 flaky-test fixes. The top three are Async Wait,
+Luo et al. inspect 201 commits that likely fix flaky tests, from 51 Apache projects, and could
+classify the root cause of 161 (Table 1, p. 3; 154 of 161 platform-independent, p. 6). The top three are Async Wait,
 Concurrency and Test Order Dependency (p. 2); the rest are Resource Leak, Network, Time, IO,
 Randomness, Floating Point and Unordered Collections (pp. 5–6). Wilson names the network as the
 source of entropy you don't control and says the same applies to threads and disks.
