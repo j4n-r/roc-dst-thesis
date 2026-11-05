@@ -1,6 +1,64 @@
 # Findings
 
-Measured or read directly. Roc `nightly-2026-10-20-7a8a800`, basic-cli `cbd8b47` (2026-10-13).
+Measured or read directly. Unless stated otherwise: Roc `nightly-2026-10-20-7a8a800`,
+basic-cli `cbd8b47` (2026-10-13).
+
+## Experiment: platform-dependent packages (2026-11-05)
+
+See [`experiments/platform-compatibility`](../experiments/platform-compatibility) for the
+reproducer, seven front-end checks and two native build/run cases. Tested with installed
+Roc `nightly-2026-11-01-48d3369` and basic-cli `cbd8b47`, extracted from Git without changing
+the local checkout. The compatibility direction is **our restricted platform → upstream**.
+
+- App and fixture package both declare our trimmed platform: a deletion-only copy removing
+  `Stdout.write_bytes!`, its hosted declaration and its native mapping. The package calls
+  retained `Stdout.line!` and returns a nominal `Duration` that the app consumes and sleeps for.
+- The fixture passes checking against our platform. `--replace-dep OUR_PLATFORM UPSTREAM`
+  selects upstream for both app and package without changing their source, and checking
+  still passes.
+- Built the pinned upstream Rust host with Rust `1.97.1` and Zig `0.16.0` in basic-cli's Nix
+  environment. The unchanged app builds and runs with that real host under both `--opt=dev`
+  and `--opt=speed`: exit 0, empty stderr, exact output including `duration: 7000000ns`.
+- Source hashes remain unchanged throughout. Pointing only the app at upstream fails with
+  `platform dependency mismatch` because the package still declares ours. An app-only switch
+  to a byte-identical copy of ours fails too; local root-file identity matters.
+- A package using the excluded operation fails against ours with
+  `pf.Stdout.write_bytes! does not exist.` and passes checking when replaced with upstream.
+
+Consequence: this app can be authored against our restricted API and run on upstream without
+source edits, using a graph-wide build-time replacement. This does not require accepting all
+upstream apps on our platform. The restricted side has no simulator host yet: only its Roc
+API is tested. This is a minimal subset and fixture, not proof for every accepted app, a real
+third-party package, URL dependencies, the full DST subset or the older compiler used for
+baton. The first version tested the opposite replacement direction; the current reproducer
+and native evidence test the intended direction explicitly.
+
+## Experiment: full subset and subset-only host (2026-11-05)
+
+See [`experiments/subset-link`](../experiments/subset-link) for the separate reproducer.
+Roc `nightly-2026-11-01-48d3369`, basic-cli `cbd8b47`, Rust `1.97.1`, x64musl only.
+
+- The intended API trim leaves 11 public modules, four private modules and 25 hosted
+  functions. It retains TCP, time/sleep, output, read-only environment, arguments and seeds;
+  removes filesystem, HTTP (including the package dependency), commands, SQLite and terminal
+  APIs. Every retained Roc file is checked to contain only deletions from the pinned source.
+- Whole-module deletion is insufficient: `Env` also needs its filesystem operations deleted,
+  and the startup wrapper's error path must stop calling excluded `Tty.disable_raw_mode!`.
+- A dependency-free Rust probe host uses freshly generated glue for this subset. Its archive
+  exports exactly the 25 retained `hosted_*` symbols, audited with `nm`, plus runtime support.
+  No upstream host archive or replacement flag is used.
+- Two apps check and link with zero warnings in both dev and speed builds. Startup receives
+  the correct arguments (including an allocated long string), excludes argv[0], and converts
+  `Ok({})` to exit 0 and `Err(Exit(23))` to exit 23.
+- The effects fixture references all 25 hosted operations, but execution deliberately exits
+  86 at its first effect. These are fail-closed linking placeholders, not simulated effects.
+- Negative checks reject all nine removed exposed modules and `Env.cwd!`. Removing the
+  retained `hosted_tcp_read_until` implementation makes both backend links fail naming it.
+
+Conclusion: these fixtures need neither the deleted HTTP dependency nor excluded host
+exports to check and link against the full trim. This settles API/link feasibility, not
+simulation or host equivalence. Resource destruction, scheduling, interrupts, non-Unicode
+arguments and real-vs-sim differential behavior remain untested here. No simulator was added.
 
 ## Experiment: baton ([`experiments/baton`](../experiments/baton), see its README)
 

@@ -5,7 +5,7 @@
 - [notes/design.md](notes/design.md): design decisions and their reasons
 - [notes/findings.md](notes/findings.md): experiment results, basic-cli facts, prior art, Zulip feedback
 - [notes/open-questions.md](notes/open-questions.md)
-- [experiments/](experiments/): `baton`, `messaging`, `counters`, each with its own flake and `build.sh`
+- [experiments/](experiments/): `baton`, `messaging`, `counters` (each with a flake and `build.sh`), `platform-compatibility` (unchanged source on upstream), and `subset-link` (full API trim and subset-only host linking)
 - [material/pitch.html](material/pitch.html): thesis pitch
 
 Feedback from the Roc Zulip thread "Deterministic simulation testing (DST) with Roc platforms"
