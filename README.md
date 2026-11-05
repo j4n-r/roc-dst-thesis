@@ -8,6 +8,9 @@
 - [notes/open-questions.md](notes/open-questions.md)
 - [experiments/](experiments/): `baton`, `messaging`, `counters` (each with a flake and `build.sh`), `platform-compatibility` (unchanged source on upstream), and `subset-link` (full API trim and subset-only host linking)
 - [material/pitch.html](material/pitch.html): thesis pitch
+- [roc_sources/](roc_sources/): upstream basic-cli and the Roc compiler as git submodules, for
+  reading and for the experiments' scripts. Clone with `git clone --recurse-submodules`, or run
+  `git submodule update --init` afterwards.
 
 Feedback from the Roc Zulip thread "Deterministic simulation testing (DST) with Roc platforms"
 (2026-10-23/24) is summarized in [notes/findings.md](notes/findings.md).

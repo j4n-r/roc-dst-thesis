@@ -15,7 +15,7 @@ def run(*args):
 
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--basic-cli", type=Path, default=Path(__file__).resolve().parents[2] / "basic-cli")
+parser.add_argument("--basic-cli", type=Path, default=Path(__file__).resolve().parents[2] / "roc_sources/basic-cli")
 parser.add_argument("--rev", default="cbd8b47")
 parser.add_argument("--roc", default="roc")
 parser.add_argument("--run-native", action="store_true", help="also build the upstream x64musl host and run the unchanged app")

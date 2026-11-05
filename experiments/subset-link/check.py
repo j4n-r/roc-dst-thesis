@@ -96,8 +96,8 @@ def trim(platform):
 
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--basic-cli", type=Path, default=ROOT / "basic-cli")
-parser.add_argument("--roc-source", type=Path, default=ROOT / "project/roc")
+parser.add_argument("--basic-cli", type=Path, default=ROOT / "roc_sources/basic-cli")
+parser.add_argument("--roc-source", type=Path, default=ROOT / "roc_sources/roc")
 parser.add_argument("--rev", default="cbd8b47c7ef180daa4f10138191ba7215a249e96")
 parser.add_argument("--glue-rev", default="48d3369")
 parser.add_argument("--roc", default="roc")

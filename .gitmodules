@@ -1,0 +1,6 @@
+[submodule "roc_sources/basic-cli"]
+	path = roc_sources/basic-cli
+	url = https://github.com/roc-lang/basic-cli.git
+[submodule "roc_sources/roc"]
+	path = roc_sources/roc
+	url = https://github.com/roc-lang/roc.git

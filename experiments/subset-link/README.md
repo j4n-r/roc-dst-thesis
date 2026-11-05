@@ -15,15 +15,15 @@ are deliberately fatal placeholders, not successful fake implementations.
 From the thesis repository root on this NixOS x86_64 machine:
 
 ```sh
-nix develop ./basic-cli -c python3 experiments/subset-link/check.py --roc /run/current-system/sw/bin/roc
+nix develop ./roc_sources/basic-cli -c python3 experiments/subset-link/check.py --roc /run/current-system/sw/bin/roc
 ```
 
 Recorded run: 2026-11-05, Roc `nightly-2026-11-01-48d3369`, Rust `1.97.1`.
 The script requires Python 3.12+, Git, `nm`, and Rust with the
 `x86_64-unknown-linux-musl` target (available in that Nix environment).
 It reads basic-cli revision `cbd8b47c7ef180daa4f10138191ba7215a249e96`
-from `basic-cli/`, and the matching compiler glue specification at `48d3369`
-from `project/roc/`. Override paths with `--basic-cli`, `--roc-source`, or `--roc`;
+from `roc_sources/basic-cli/`, and the matching compiler glue specification at `48d3369`
+from `roc_sources/roc/`. Override paths with `--basic-cli`, `--roc-source`, or `--roc`;
 revision overrides are `--rev` and `--glue-rev`.
 
 Everything generated lives in an automatically removed temporary directory.

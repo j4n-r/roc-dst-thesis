@@ -24,7 +24,7 @@ python3 experiments/platform-compatibility/check.py
 For native build/run verification on this NixOS x86_64 machine:
 
 ```sh
-nix develop ./basic-cli -c python3 experiments/platform-compatibility/check.py --roc /run/current-system/sw/bin/roc --run-native
+nix develop ./roc_sources/basic-cli -c python3 experiments/platform-compatibility/check.py --roc /run/current-system/sw/bin/roc --run-native
 ```
 
 Needs Python 3.12+, Git, a basic-cli checkout containing `cbd8b47`, and a Roc compiler with
