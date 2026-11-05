@@ -83,7 +83,12 @@ than hope.
 
 ## Subset
 
-TCP (listen, accept, connect, read_*, write; close happens on last release), sleep, Utc and
+**Not fixed yet.** The subset follows from what the Raft KV app and its third-party package
+actually use, so it is set once that app exists. `experiments/subset-link` uses the list below
+only to prove the mechanism (deletion-only trim, subset-only host), not to decide the subset.
+Adding a function back later means restoring deleted lines and implementing it in the sim host.
+
+Working assumption: TCP (listen, accept, connect, read_*, write; close happens on last release), sleep, Utc and
 Monotonic time, stdout/stderr, args/env, random seed. Out: filesystem, HTTP (client-only in
 basic-cli and goes through hyper rather than `Tcp`), Cmd, Sqlite, Tty, …
 
