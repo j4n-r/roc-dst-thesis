@@ -1,6 +1,6 @@
 # Design decisions
 
-State as of 2026-10-24. The reasons come from discussion and the experiments in
+State as of 2026-11-05. The reasons come from discussion and the experiments in
 [findings.md](findings.md).
 
 ## Platform vs host
@@ -31,6 +31,55 @@ State as of 2026-10-24. The reasons come from discussion and the experiments in
 - **The app's header uses a local platform path,** not a release URL, because release bundles
   ship a prebuilt host that can't be swapped. Pin one basic-cli revision for platform, real host
   and glue.
+
+## Selecting the platform (decided 2026-11-05)
+
+The app and its packages declare **basic-cli-dst**. The plain build runs in the sim. The real
+build replaces the platform for the whole dependency graph:
+`roc build --replace-dep <basic-cli-dst> <upstream basic-cli>`. Evidence:
+`experiments/platform-compatibility` and `experiments/subset-link` in [findings.md](findings.md).
+
+Roc picks a platform's host by target (`targets/<target>/libhost.a`), not by mode. On one
+target, "one platform with a real and a sim host" therefore means one of two things:
+
+| | Real build | Compile-time subset | Cost |
+|---|---|---|---|
+| **A. Subset platform + `--replace-dep`** (chosen) | upstream basic-cli, its `.roc` and host | yes | one flag per distinct platform declaration in the graph |
+| B1. Full basic-cli API, sim host beside the real one | upstream | no: unsupported effects fail at runtime | sim for all 94 hosted functions, or runtime errors |
+| B2. Trimmed API, swap `libhost.a` | trimmed API on upstream's host | yes | host swapped outside the compiler (stale host risk); weaker "runs on basic-cli" claim |
+
+- **Why A:** the platform API is the simulation boundary and the type checker enforces it, which
+  is the thesis title. The real side is literally upstream basic-cli. The sim host needs only the
+  25 retained hosted functions.
+- **"Unchanged" means** byte-identical app and package source. Platform selection is a build
+  input, and the resolved dependency graph differs between the builds.
+- **Packages:** those without a platform dependency need nothing. Each distinct platform
+  declaration needs its own flag, matched exactly (path or URL and hash). The Raft modules take
+  effects as arguments, so they are unaffected.
+- **Fallback B2:** the app source is the same as under A, so switching needs no app edits. Use it
+  if `--replace-dep` becomes painful with real packages. In the review, the B2 and A speed builds
+  of the fixture were byte-identical.
+- **B1 is future work:** a DST mode inside basic-cli, i.e. one `libhost.a` whose `hosted_*`
+  functions dispatch to tokio or the simulator by a startup switch (e.g. a seed variable). It
+  avoids the flags and lets apps just name basic-cli, but needs a sim (or runtime error) for all
+  94 functions, loses the compile-time boundary, and reworks basic-cli's tokio startup, which
+  owns `main` and runs one `roc_main` per process. The subset sim host is most of what that mode
+  needs.
+
+## Differential test (sim host vs real host)
+
+Answers Richard's concern that the semantics of the two hosts may not match: check it rather
+than hope.
+
+- Build one workload app twice, against basic-cli-dst (sim host) and with `--replace-dep`
+  (upstream host), and run both.
+- **Compare:** stdout, exit codes, and error tags (e.g. connecting to a port nobody listens on
+  gives the same `Err` tag).
+- **Exclude:** wall-clock times and anything shaped by injected faults. The sim run uses a
+  no-fault scenario.
+- **Needs a sim host first.** `subset-link`'s placeholders exit 86, and baton uses its own toy
+  API. Start with args, env, stdout and exit codes, which are trivial to simulate, then add TCP
+  and time as the sim host grows.
 
 ## Subset
 
