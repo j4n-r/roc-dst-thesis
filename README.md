@@ -1,5 +1,19 @@
 # Bachelor thesis: Roc platform model for deterministic simulation testing
 
+Deterministic simulation testing is hard and puts a lot of constraints on your applications design and code.
+Rocs platfrom model provides a native boundary to decouple non determinism from the application.
+This thesis explores that boundary and how it might help writing a deterministic simulator for your applications or a general even one.
+
+All of the projects code is written by myself, excluding the experiments. Not because I hate LLMs but because I think it is valuable in this context to do so.
+I need to defend this thesis and its project so I should know whats written in it and more importantly why it was written.
+The thesis will also be hand-written, the expose isn't.
+
+Everything below this line is LLM-generated.
+
+---
+
+This repo contains most of the work for my bachelor thesis about deterministic simulation testing with roc.
+
 - [expose.typ](expose.typ): the one-page exposé (build command at the top of the file; needs `.env`, see `.env.example`; earlier long versions are in git history)
 - [notes/reading.md](notes/reading.md): Zotero triage (essential, cite only, skip) and missing sources
 - [notes/design.md](notes/design.md): design decisions and their reasons
