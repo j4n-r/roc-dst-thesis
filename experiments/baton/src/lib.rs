@@ -19,6 +19,13 @@
 //! the clock forward instead of waiting. The same seed therefore gives the same
 //! run, which the trace hash printed at the end lets you check.
 //!
+//! A node can start more fibers with `Fiber.spawn!`. The scheduler's unit is a
+//! fiber, not a node: each fiber gets its own OS thread and is one more baton
+//! holder. The app boxes the fiber's function and passes it to
+//! `hosted_spawn`; the new thread hands the box back to Roc through the
+//! platform's `roc_run_fiber` entry point, which unboxes and calls it. Messages
+//! go to a node's mailbox; the fiber that has waited longest in `recv!` gets them.
+//!
 //! Usage: `app/main <seed> [--trace]`
 
 use std::cell::RefCell;
@@ -34,7 +41,8 @@ use std::thread;
 mod roc_platform_abi;
 
 use crate::roc_platform_abi::{
-    make_roc_host, roc_main, DefaultAllocators, DefaultHandlers, HostRecv, RocHost, RocStr,
+    make_roc_host, roc_main, roc_run_fiber, DefaultAllocators, DefaultHandlers, HostRecv,
+    RocErasedCallable, RocHost, RocStr,
 };
 
 /// Number of nodes, i.e. app instances.
@@ -50,7 +58,7 @@ const MAX_DELAY_MS: u64 = 30;
 /// One message in this many is dropped.
 const DROP_ONE_IN: u64 = 10;
 
-/// Stack for each node thread. Roc recursion runs on it, so be generous.
+/// Stack for each fiber thread. Roc recursion runs on it, so be generous.
 const NODE_STACK_BYTES: usize = 64 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
@@ -58,7 +66,7 @@ const NODE_STACK_BYTES: usize = 64 * 1024 * 1024;
 
 // `RocHost` bundles the allocator and handler callbacks that the glue's helper
 // methods (`RocStr::from_str`, `decref`, ...) use. It lives in a global so the
-// `extern "C"` functions, which take no context argument, can reach it. All node
+// `extern "C"` functions, which take no context argument, can reach it. All fiber
 // threads share it; that's safe because only one thread runs at a time.
 static mut ROC_HOST: *mut RocHost = core::ptr::null_mut();
 
@@ -110,7 +118,21 @@ pub extern "C" fn roc_crashed(bytes: *const u8, len: usize) {
 // The baton: what a node asks for, and what the scheduler answers.
 //
 // Strings cross between threads as Rust `String`s. Roc values (`RocStr`) are
-// created and released only on the node thread that uses them.
+// created and released only on the fiber thread that uses them. The one
+// exception is a spawned fiber's box, which is handed on untouched.
+
+/// A spawned fiber's boxed function, on its way to the thread that runs it.
+/// Only one thread runs at a time, and the channels order the handoff.
+struct FiberBox(RocErasedCallable);
+unsafe impl Send for FiberBox {}
+
+/// What a fiber thread calls into once it first gets the baton.
+enum Entry {
+    /// A node's first fiber: `roc_main(node)`.
+    Main(u64),
+    /// A fiber from `Fiber.spawn!`: `roc_run_fiber(box)`.
+    Spawned(FiberBox),
+}
 
 enum Request {
     Send { to: u64, msg: String },
@@ -118,12 +140,13 @@ enum Request {
     Now,
     Sleep { ms: u64 },
     Line(String),
-    /// `roc_main` returned; the node thread is about to exit.
+    Spawn(FiberBox),
+    /// The fiber's Roc function returned; its thread is about to exit.
     Done,
 }
 
 enum Reply {
-    /// First baton pass: call `roc_main`.
+    /// First baton pass: call into Roc.
     Start,
     Unit,
     Now(u64),
@@ -131,15 +154,16 @@ enum Reply {
     Timeout,
 }
 
-/// A node thread's end of the baton.
+/// A fiber thread's end of the baton.
 struct Link {
+    /// Fiber id.
     id: u64,
     to_scheduler: Sender<(u64, Request)>,
     inbox: Receiver<Reply>,
 }
 
 thread_local! {
-    // Which node this thread runs. Hosted functions have no context argument,
+    // Which fiber this thread runs. Hosted functions have no context argument,
     // so this is how they find out who is calling.
     static LINK: RefCell<Option<Link>> = const { RefCell::new(None) };
 }
@@ -148,7 +172,7 @@ thread_local! {
 fn yield_to_scheduler(request: Request) -> Reply {
     LINK.with(|link| {
         let link = link.borrow();
-        let link = link.as_ref().expect("hosted function called outside a node thread");
+        let link = link.as_ref().expect("hosted function called outside a fiber thread");
         link.to_scheduler.send((link.id, request)).expect("scheduler gone");
         link.inbox.recv().expect("scheduler gone")
     })
@@ -203,6 +227,13 @@ pub extern "C" fn hosted_stdout_line(line: RocStr) {
     yield_to_scheduler(Request::Line(line));
 }
 
+/// Hosted function: Host.spawn!
+#[no_mangle]
+pub extern "C" fn hosted_spawn(task: RocErasedCallable) {
+    // Ownership of the box moves to the new fiber, which passes it to Roc.
+    yield_to_scheduler(Request::Spawn(FiberBox(task)));
+}
+
 // ---------------------------------------------------------------------------
 // PRNG: xoshiro256++, seeded through splitmix64. Our own, so the sequence for a
 // seed never changes with a Rust or crate version.
@@ -247,10 +278,11 @@ impl Rng {
 /// Something that happens at a point in virtual time.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 enum Event {
+    /// A message reaches node `to`.
     Deliver { to: u64, from: u64, msg: String },
-    /// A `Recv` with this token gives up. Ignored if the node got a message first.
-    RecvTimeout { node: u64, token: u64 },
-    Wake { node: u64 },
+    /// A `Recv` with this token gives up. Ignored if the fiber got a message first.
+    RecvTimeout { fiber: u64, token: u64 },
+    Wake { fiber: u64 },
 }
 
 #[derive(PartialEq)]
@@ -262,10 +294,20 @@ enum Waiting {
     Done,
 }
 
+struct FiberState {
+    node: u64,
+    /// Name in the trace: `n1` for a node's first fiber, `n1.2` for its second spawn.
+    label: String,
+    waiting: Waiting,
+}
+
 struct NodeState {
     mailbox: VecDeque<(u64, String)>,
-    waiting: Waiting,
     lines: u64,
+    /// Fibers started with `Fiber.spawn!`.
+    spawned: u64,
+    /// Fibers that haven't returned yet. The node is finished at 0.
+    live: u64,
 }
 
 struct Sim {
@@ -275,10 +317,50 @@ struct Sim {
     seq: u64,
     events: BinaryHeap<Reverse<(u64, u64, Event)>>,
     nodes: Vec<NodeState>,
-    /// Nodes that may run, each with the reply that resumes it.
+    /// Indexed by fiber id. Fiber `n` for `n < CLUSTER_SIZE` is node `n`'s first fiber.
+    fibers: Vec<FiberState>,
+    /// Fibers that may run, each with the reply that resumes it.
     ready: Vec<(u64, Reply)>,
     trace: Vec<String>,
     stats: Stats,
+    threads: Threads,
+}
+
+/// The scheduler's ends of the fiber threads.
+struct Threads {
+    to_scheduler: Sender<(u64, Request)>,
+    /// Indexed by fiber id.
+    to_fibers: Vec<Sender<Reply>>,
+    handles: Vec<thread::JoinHandle<()>>,
+}
+
+impl Threads {
+    /// Start a thread for fiber `id`. It waits for the baton (Start) before
+    /// calling into Roc, so it doesn't run yet.
+    fn start(&mut self, id: u64, entry: Entry) {
+        let (to_fiber, inbox) = channel::<Reply>();
+        self.to_fibers.push(to_fiber);
+        let to_scheduler = self.to_scheduler.clone();
+        let handle = thread::Builder::new()
+            .name(format!("fiber{id}"))
+            .stack_size(NODE_STACK_BYTES)
+            .spawn(move || {
+                let done = to_scheduler.clone();
+                LINK.with(|link| *link.borrow_mut() = Some(Link { id, to_scheduler, inbox }));
+                // Wait for the scheduler to hand us the baton the first time.
+                LINK.with(|link| match link.borrow().as_ref().unwrap().inbox.recv() {
+                    Ok(Reply::Start) => {}
+                    _ => panic!("fiber {id}: expected Start"),
+                });
+                match entry {
+                    Entry::Main(node) => unsafe { roc_main(node) },
+                    Entry::Spawned(task) => unsafe { roc_run_fiber(task.0) },
+                }
+                done.send((id, Request::Done)).expect("scheduler gone");
+            })
+            .expect("spawning fiber thread");
+        self.handles.push(handle);
+    }
 }
 
 #[derive(Default)]
@@ -299,46 +381,66 @@ impl Sim {
         self.events.push(Reverse((self.now + delay, self.seq, event)));
     }
 
-    /// A node handed us the baton with `request`. Decide what it gets back, now
-    /// or later.
-    fn handle_request(&mut self, node: u64, request: Request) {
+    /// Fiber `fiber` handed us the baton with `request`. Decide what it gets
+    /// back, now or later.
+    fn handle_request(&mut self, fiber: u64, request: Request) {
+        let node = self.fibers[fiber as usize].node;
+        let label = self.fibers[fiber as usize].label.clone();
         match request {
             Request::Send { to, msg } => {
                 self.stats.sent += 1;
                 if to >= CLUSTER_SIZE as u64 {
-                    self.log(format!("n{node} send to unknown n{to}: {msg:?} (lost)"));
+                    self.log(format!("{label} send to unknown n{to}: {msg:?} (lost)"));
                 } else if self.rng.below(DROP_ONE_IN) == 0 {
                     self.stats.dropped += 1;
-                    self.log(format!("n{node} -> n{to} {msg:?} DROPPED"));
+                    self.log(format!("{label} -> n{to} {msg:?} DROPPED"));
                 } else {
                     let delay = MIN_DELAY_MS + self.rng.below(MAX_DELAY_MS - MIN_DELAY_MS + 1);
-                    self.log(format!("n{node} -> n{to} {msg:?} (arrives in {delay}ms)"));
+                    self.log(format!("{label} -> n{to} {msg:?} (arrives in {delay}ms)"));
                     self.at(delay, Event::Deliver { to, from: node, msg });
                 }
-                self.ready.push((node, Reply::Unit));
+                self.ready.push((fiber, Reply::Unit));
             }
             Request::Recv { timeout_ms } => {
                 if let Some((from, msg)) = self.nodes[node as usize].mailbox.pop_front() {
-                    self.ready.push((node, Reply::Msg { from, msg }));
+                    self.ready.push((fiber, Reply::Msg { from, msg }));
                 } else {
                     let token = self.seq + 1;
-                    self.nodes[node as usize].waiting = Waiting::Recv { token };
-                    self.at(timeout_ms, Event::RecvTimeout { node, token });
+                    self.fibers[fiber as usize].waiting = Waiting::Recv { token };
+                    self.at(timeout_ms, Event::RecvTimeout { fiber, token });
                 }
             }
-            Request::Now => self.ready.push((node, Reply::Now(self.now))),
+            Request::Now => self.ready.push((fiber, Reply::Now(self.now))),
             Request::Sleep { ms } => {
-                self.nodes[node as usize].waiting = Waiting::Sleep;
-                self.at(ms, Event::Wake { node });
+                self.fibers[fiber as usize].waiting = Waiting::Sleep;
+                self.at(ms, Event::Wake { fiber });
             }
             Request::Line(line) => {
                 self.nodes[node as usize].lines += 1;
-                self.log(format!("n{node} | {line}"));
-                self.ready.push((node, Reply::Unit));
+                self.log(format!("{label} | {line}"));
+                self.ready.push((fiber, Reply::Unit));
+            }
+            Request::Spawn(task) => {
+                let state = &mut self.nodes[node as usize];
+                state.spawned += 1;
+                state.live += 1;
+                let child = self.fibers.len() as u64;
+                let child_label = format!("n{node}.{}", state.spawned);
+                self.log(format!("{label} spawned {child_label}"));
+                self.fibers.push(FiberState { node, label: child_label, waiting: Waiting::Nothing });
+                self.threads.start(child, Entry::Spawned(task));
+                self.ready.push((fiber, Reply::Unit));
+                self.ready.push((child, Reply::Start));
             }
             Request::Done => {
-                self.nodes[node as usize].waiting = Waiting::Done;
-                self.log(format!("n{node} finished"));
+                self.fibers[fiber as usize].waiting = Waiting::Done;
+                let state = &mut self.nodes[node as usize];
+                state.live -= 1;
+                if state.live == 0 {
+                    self.log(format!("n{node} finished"));
+                } else {
+                    self.log(format!("{label} returned"));
+                }
             }
         }
     }
@@ -346,31 +448,40 @@ impl Sim {
     fn handle_event(&mut self, event: Event) {
         match event {
             Event::Deliver { to, from, msg } => {
-                let state = &mut self.nodes[to as usize];
-                match state.waiting {
-                    Waiting::Done => self.log(format!("n{to} already finished, {msg:?} lost")),
-                    Waiting::Recv { .. } => {
-                        state.waiting = Waiting::Nothing;
-                        self.stats.delivered += 1;
-                        self.ready.push((to, Reply::Msg { from, msg }));
+                if self.nodes[to as usize].live == 0 {
+                    self.log(format!("n{to} already finished, {msg:?} lost"));
+                    return;
+                }
+                self.stats.delivered += 1;
+                // The node's fiber that has waited longest in `recv!` gets it.
+                let receiver = self
+                    .fibers
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(id, f)| match f.waiting {
+                        Waiting::Recv { token } if f.node == to => Some((token, id)),
+                        _ => None,
+                    })
+                    .min();
+                match receiver {
+                    Some((_, id)) => {
+                        self.fibers[id].waiting = Waiting::Nothing;
+                        self.ready.push((id as u64, Reply::Msg { from, msg }));
                     }
-                    _ => {
-                        self.stats.delivered += 1;
-                        state.mailbox.push_back((from, msg));
-                    }
+                    None => self.nodes[to as usize].mailbox.push_back((from, msg)),
                 }
             }
-            Event::RecvTimeout { node, token } => {
-                let state = &mut self.nodes[node as usize];
+            Event::RecvTimeout { fiber, token } => {
+                let state = &mut self.fibers[fiber as usize];
                 if state.waiting == (Waiting::Recv { token }) {
                     state.waiting = Waiting::Nothing;
                     self.stats.timeouts += 1;
-                    self.ready.push((node, Reply::Timeout));
+                    self.ready.push((fiber, Reply::Timeout));
                 }
             }
-            Event::Wake { node } => {
-                self.nodes[node as usize].waiting = Waiting::Nothing;
-                self.ready.push((node, Reply::Unit));
+            Event::Wake { fiber } => {
+                self.fibers[fiber as usize].waiting = Waiting::Nothing;
+                self.ready.push((fiber, Reply::Unit));
             }
         }
     }
@@ -392,45 +503,27 @@ fn run(seed: u64, print_trace: bool) -> i32 {
     let mut roc_host = make_roc_host(core::ptr::null_mut());
     unsafe { ROC_HOST = &mut roc_host };
 
-    // Start one thread per node. Each one first waits for the baton (Start)
-    // before calling into Roc, so none of them runs yet.
-    let (to_scheduler, from_nodes) = channel::<(u64, Request)>();
-    let mut to_nodes: Vec<Sender<Reply>> = Vec::new();
-    let mut handles = Vec::new();
-    for id in 0..CLUSTER_SIZE as u64 {
-        let (to_node, inbox) = channel::<Reply>();
-        to_nodes.push(to_node);
-        let to_scheduler = to_scheduler.clone();
-        let handle = thread::Builder::new()
-            .name(format!("node{id}"))
-            .stack_size(NODE_STACK_BYTES)
-            .spawn(move || {
-                let done = to_scheduler.clone();
-                LINK.with(|link| *link.borrow_mut() = Some(Link { id, to_scheduler, inbox }));
-                // Wait for the scheduler to hand us the baton the first time.
-                LINK.with(|link| match link.borrow().as_ref().unwrap().inbox.recv() {
-                    Ok(Reply::Start) => {}
-                    _ => panic!("node {id}: expected Start"),
-                });
-                unsafe { roc_main(id) };
-                done.send((id, Request::Done)).expect("scheduler gone");
-            })
-            .expect("spawning node thread");
-        handles.push(handle);
-    }
-
+    let (to_scheduler, from_fibers) = channel::<(u64, Request)>();
     let mut sim = Sim {
         rng: Rng::new(seed),
         now: 0,
         seq: 0,
         events: BinaryHeap::new(),
         nodes: (0..CLUSTER_SIZE)
-            .map(|_| NodeState { mailbox: VecDeque::new(), waiting: Waiting::Nothing, lines: 0 })
+            .map(|_| NodeState { mailbox: VecDeque::new(), lines: 0, spawned: 0, live: 1 })
+            .collect(),
+        fibers: (0..CLUSTER_SIZE as u64)
+            .map(|node| FiberState { node, label: format!("n{node}"), waiting: Waiting::Nothing })
             .collect(),
         ready: (0..CLUSTER_SIZE as u64).map(|id| (id, Reply::Start)).collect(),
         trace: Vec::new(),
         stats: Stats::default(),
+        threads: Threads { to_scheduler, to_fibers: Vec::new(), handles: Vec::new() },
     };
+    // One fiber per node to start with; fiber id = node id.
+    for node in 0..CLUSTER_SIZE as u64 {
+        sim.threads.start(node, Entry::Main(node));
+    }
 
     let mut steps = 0;
     loop {
@@ -441,14 +534,14 @@ fn run(seed: u64, print_trace: bool) -> i32 {
         }
 
         if !sim.ready.is_empty() {
-            // Pick any ready node: this is where interleavings differ per seed.
+            // Pick any ready fiber: this is where interleavings differ per seed.
             let pick = sim.rng.below(sim.ready.len() as u64) as usize;
-            let (node, reply) = sim.ready.swap_remove(pick);
-            // Pass the baton and wait for it to come back. Only that node runs now.
-            to_nodes[node as usize].send(reply).expect("node thread gone");
-            let (from, request) = from_nodes.recv().expect("all node threads gone");
-            assert_eq!(from, node, "a node ran without holding the baton");
-            sim.handle_request(node, request);
+            let (fiber, reply) = sim.ready.swap_remove(pick);
+            // Pass the baton and wait for it to come back. Only that fiber runs now.
+            sim.threads.to_fibers[fiber as usize].send(reply).expect("fiber thread gone");
+            let (from, request) = from_fibers.recv().expect("all fiber threads gone");
+            assert_eq!(from, fiber, "a fiber ran without holding the baton");
+            sim.handle_request(fiber, request);
         } else if let Some(Reverse((time, _, event))) = sim.events.pop() {
             // Nobody can run: jump the clock to the next event.
             sim.now = time;
@@ -458,8 +551,12 @@ fn run(seed: u64, print_trace: bool) -> i32 {
         }
     }
 
-    let stuck: Vec<usize> =
-        (0..CLUSTER_SIZE).filter(|&n| sim.nodes[n].waiting != Waiting::Done).collect();
+    let stuck: Vec<&str> = sim
+        .fibers
+        .iter()
+        .filter(|f| f.waiting != Waiting::Done)
+        .map(|f| f.label.as_str())
+        .collect();
 
     if print_trace {
         for line in &sim.trace {
@@ -483,11 +580,11 @@ fn run(seed: u64, print_trace: bool) -> i32 {
     println!("trace hash {:016x}", fnv1a(&sim.trace));
 
     if !stuck.is_empty() {
-        eprintln!("nodes never finished: {stuck:?}");
+        eprintln!("fibers never finished: {stuck:?}");
         return 1;
     }
-    for handle in handles {
-        handle.join().expect("node thread panicked");
+    for handle in sim.threads.handles {
+        handle.join().expect("fiber thread panicked");
     }
     0
 }

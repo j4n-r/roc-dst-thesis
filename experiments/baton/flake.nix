@@ -10,7 +10,7 @@
     # Roc source for src/glue/src/RustGlue.roc. Keep this rev in sync with the
     # roc nightly from roc-overlay in ~/nix-config (`roc version`).
     roc-src = {
-      url = "github:roc-lang/roc/38e6c42c889cc7ffd97beea9199186790cc848f5";
+      url = "github:roc-lang/roc/34f137a34d15b3800404ac99ee32b4ceeda1421a";
       flake = false;
     };
   };

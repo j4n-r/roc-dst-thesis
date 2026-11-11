@@ -1198,6 +1198,15 @@ pub struct HostStdoutLineArgs {
     pub arg0: RocStr,
 }
 
+/// Arguments for Host.spawn!
+/// Roc signature: Box({} => {}) => {}
+/// Refcounted fields are owned by the hosted function.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HostSpawnArgs {
+    pub arg0: RocErasedCallable,
+}
+
 // Platform Type Aliases
 
 pub type HostRecv = AnonStruct8df5c008145ca1be;
@@ -1323,6 +1332,13 @@ unsafe extern "C" {
     /// moved into storage or into the result:
     ///     unsafe { arg0.decref(roc_host); }
     pub fn hosted_stdout_line(arg0: RocStr);
+
+    /// Hosted symbol for Host.spawn!
+    /// Roc signature: Box({} => {}) => {}
+    /// Owned arguments. Release each exactly once before returning, unless it is
+    /// moved into storage or into the result:
+    ///     unsafe { decref_erased_callable(arg0, roc_host); }
+    pub fn hosted_spawn(arg0: RocErasedCallable);
 
 }
 
@@ -1460,6 +1476,9 @@ pub fn make_roc_host(env: *mut c_void) -> RocHost {
 unsafe extern "C" {
     /// Entrypoint: main_for_host!
     pub fn roc_main(arg0: u64);
+
+    /// Entrypoint: run_fiber_for_host!
+    pub fn roc_run_fiber(arg0: RocErasedCallable);
 
 }
 

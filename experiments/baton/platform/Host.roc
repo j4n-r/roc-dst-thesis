@@ -8,4 +8,6 @@ Host := [].{
 	now_millis! : () => U64
 	sleep_millis! : U64 => {}
 	stdout_line! : Str => {}
+	## Hand a new fiber to the host. It runs the box later through `roc_run_fiber`.
+	spawn! : Box(() => {}) => {}
 }

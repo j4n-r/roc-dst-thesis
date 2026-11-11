@@ -8,9 +8,13 @@ platform ""
 		# Run node `id` (the U64) until it returns.
 		main! : U64 => {}
 	}
-	exposes [Net, Clock, Stdout]
+	exposes [Net, Clock, Stdout, Fiber]
 	packages {}
-	provides { "roc_main": main_for_host! }
+	provides {
+		"roc_main": main_for_host!,
+		# Run a fiber the app passed to `Host.spawn!`.
+		"roc_run_fiber": run_fiber_for_host!,
+	}
 	# Each effect the app can perform, implemented in Rust under this symbol name.
 	hosted {
 		"hosted_send": Host.send!,
@@ -18,6 +22,7 @@ platform ""
 		"hosted_now_millis": Host.now_millis!,
 		"hosted_sleep_millis": Host.sleep_millis!,
 		"hosted_stdout_line": Host.stdout_line!,
+		"hosted_spawn": Host.spawn!,
 	}
 	targets: {
 		inputs_dir: "targets/",
@@ -28,6 +33,13 @@ import Host
 import Net
 import Clock
 import Stdout
+import Fiber
 
 main_for_host! : U64 => {}
 main_for_host! = |id| main!(id)
+
+run_fiber_for_host! : Box(() => {}) => {}
+run_fiber_for_host! = |task| {
+	run! = Box.unbox(task)
+	run!()
+}
