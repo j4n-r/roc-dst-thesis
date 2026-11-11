@@ -24,6 +24,8 @@ This repo contains most of the work for my bachelor thesis about deterministic s
 - [roc_sources/](roc_sources/): upstream basic-cli and the Roc compiler as git submodules, for
   reading and for the experiments' scripts. Clone with `git clone --recurse-submodules`, or run
   `git submodule update --init` afterwards.
+- [dst_sources/](dst_sources/): TigerBeetle and FoundationDB as git submodules, set up to run
+  their simulators (the VOPR, `fdbserver -r simulation`) by hand. See its README.
 
 Feedback from the Roc Zulip thread "Deterministic simulation testing (DST) with Roc platforms"
 (2026-10-23/24) is summarized in [notes/findings.md](notes/findings.md).

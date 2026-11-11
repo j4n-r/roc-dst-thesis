@@ -4,3 +4,9 @@
 [submodule "roc_sources/roc"]
 	path = roc_sources/roc
 	url = https://github.com/roc-lang/roc.git
+[submodule "dst_sources/foundationdb"]
+	path = dst_sources/foundationdb
+	url = https://github.com/apple/foundationdb.git
+[submodule "dst_sources/tigerbeetle"]
+	path = dst_sources/tigerbeetle
+	url = https://github.com/tigerbeetle/tigerbeetle.git
