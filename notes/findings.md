@@ -117,6 +117,53 @@ node under a seeded scheduler and virtual time.
 - **Difference to this thesis:** these are scripted, single-instance tests. The thesis uses
   seeded exploration with many instances, injected faults and virtual time.
 
+## Prior art: SimTigerBeetle fault injection (read 2026-11-09)
+
+[sim.tigerbeetle.com](https://sim.tigerbeetle.com/) runs real TigerBeetle replicas and clients
+inside the VOPR simulator, compiled to WASM, with a game front end (Fabio Arnold, art Joy Machs;
+launched 2023-07-11, [blog post](https://tigerbeetle.com/blog/2023-07-11-we-put-a-distributed-database-in-the-browser)).
+The front-end source is not public. Values below were read from the rendered side panel
+(headless Chromium, `?scenario=N&skip_intro`) and from UI strings in `zig-out/lib/main.wasm`.
+
+Faults come from the seeded RNG and are grouped as in the UI:
+
+- **Network:** one-way delay (latency range per message), packet loss ("message will be
+  dropped"), replay ("duplicated and received more than once") and partition ("replica or client
+  will be temporarily disconnected").
+- **Storage:** read and write latency (ranges), read corruption ("a read I/O will read corrupted
+  data") and write corruption ("a write I/O will write corrupted data").
+- **Process:** crash ("a replica process will crash, and then later restart").
+
+| Scenario (`?scenario=`) | Seed | Replicas / clients | Delay | Loss | Replay | Partition | Read lat. | Write lat. | Read corr. | Write corr. | Crash |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| City Breeze (0) | `0x0000EA51` | 5 / 3 | 1–5 ms | 0% | 0% | 0% | 1–9 ms | 1–11 ms | 0% | 0% | 0.00% |
+| Red Desert (1) | `0x00DE5E87` | 6 / 4 | 2–10 ms | 13% | 2% | 1% | 0–14 ms | 1–19 ms | 0% | 0% | 0.10% |
+| Radioactive (2) | `0xCC063418` | 5 / 5 | 0–6 ms | 26% | 1% | 0% | 0–14 ms | 1–67 ms | 8% | 9% | 0.01% |
+
+City Breeze is VSR with no faults, Red Desert adds "process crashes and network partitions, but no
+storage faults", and Radioactive adds per-replica storage corruption that the UI says Raft or
+MultiPaxos cannot survive without protocol-aware recovery. The panel does not say what time unit
+the crash percentage applies to; in the VOPR it is a per-tick probability. Adding `seed=` to the
+URL (decimal or hex) did not change the shown seed, so each scenario showed one fixed
+configuration.
+
+The player can also inject faults by hand into a selected replica; the toolbar is there in all
+three scenarios. Mapping icons to tooltips is inferred from the icons and strings, not clicked:
+
+- **Hammer:** crash the replica ("Crash a replica with a hammer"). A "Duck Mode Engaged" string
+  and "Crash a replica with a duck" suggest a hidden duck variant of the hammer.
+- **Ice cube:** partition the replica's network.
+- **Lightning:** corrupt the replica's disk.
+
+The game shows only part of the VOPR's fault model. The VOPR also has a "liveness" mode that
+stops faults and checks the cluster recovers ([Simulation Testing For Liveness](https://tigerbeetle.com/blog/2023-07-06-simulation-testing-for-liveness)),
+asymmetric partitions, and (per Jepsen's [TigerBeetle 0.16.11](https://jepsen.io/analyses/tigerbeetle-0.16.11)
+report) simulated clock skew and message reordering; misdirected writes and crash-time loss of
+pending writes are in `src/testing/storage.zig`, not verified here. For this thesis: every row is
+a probability or a latency range drawn from one seed, with a few hand-made faults on top. A Roc
+simulator platform would need the same knobs at its effect boundary (network, disk, process
+lifecycle).
+
 ## Concurrency model: TigerBeetle, Flow, Roc (read 2026-11-11)
 
 Read in `dst_sources/tigerbeetle`, `dst_sources/foundationdb` and `roc_sources/basic-cli`

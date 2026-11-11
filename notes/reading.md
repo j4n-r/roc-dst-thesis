@@ -121,3 +121,14 @@ Cite only:
 | YW7PRUDZ | roc-gui (repo) | 5 Roc & platforms |
 
 The web items have no author or date yet; fill them in before citing.
+
+## Added 2026-11-09
+
+| Key | Item | Triage | Collection |
+|---|---|---|---|
+| BDE6AJTY | TigerBeetle Simulator (sim.tigerbeetle.com) | Cite only: the VOPR running in the browser, for illustration | 1 DST practice |
+| 888JCT88 | Greef & Tornow, Resonate Vibrations: Deterministic Simulation Testing (podcast, 2024) | Cite only: practitioners on what DST demands of the code (Resonate's own scheduler in Go) | 1 DST practice |
+
+"Simulation Testing For Liveness" (4BKTU6Q4) was already in the collection.
+
+888JCT88 watched 2026-11-09.
