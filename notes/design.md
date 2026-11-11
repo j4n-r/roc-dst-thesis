@@ -122,16 +122,24 @@ roc-dst/
 └── experiments/         # baton, platform-compatibility, subset-link
 ```
 
-## Build order (decided 2026-10-25)
+## Build order (decided 2026-10-25, changed 2026-11-11)
 
-Literature review first. Then build the sim host and the KV store together, so the store is the
-first app that drives the simulator. Then run the same app on upstream basic-cli and check that
-it behaves as it should. Where Raft fits in is still open.
+Literature review first. Then the KV store with Raft, written and run on upstream basic-cli.
+Then fix the subset from what the app uses, trim basic-cli-dst and build the sim host for that
+subset only. Then run the unchanged app in the sim.
 
+- **Why app first (2026-11-11):** the subset follows from what the app uses (see Subset), so the
+  sim host implements exactly that and nothing more. With no sim yet, the app can't drift
+  toward it. A real bug the sim later finds in the app would be extra evaluation evidence,
+  beside the injected bug.
+- **Cost: debugging Raft on real TCP**, where failures don't replay from a seed (the reason for
+  the earlier sim-first order, decided 2026-10-25). Mitigation: keep Raft's logic in pure
+  functions tested with `expect`, and use a script that starts 3 local nodes and runs a few puts
+  and gets. Keep Raft minimal (leader election and log replication; no snapshots, no membership
+  changes) and timebox it before starting the sim host.
 - **Build order is not evidence (2026-11-05).** Nobody can verify which was written first, so
-  writing the app on basic-cli before the sim would prove nothing. The order is chosen for
-  convenience: sim first or together, because failures reproduce from a seed and are easy to
-  debug there, unlike on real TCP.
+  writing the app on basic-cli before the sim proves nothing. The "unchanged" claim rests on the
+  three checks below, whatever the order.
 - **The "unchanged" claim rests on three checks anyone can repeat:**
   1. The app's source passes the criteria check: it uses none of the practices existing DST
      approaches require of the app (e.g. injected clocks, a sans-IO core, a custom runtime).
@@ -146,14 +154,37 @@ it behaves as it should. Where Raft fits in is still open.
   differential test (sim and upstream give the same stdout, exit codes and error tags) says the
   sim behaves like basic-cli and belongs to the evaluation of the simulated TCP. Both use the
   same builds, but either can fail without the other.
-- **Safeguard while building: run on upstream from the first version.** Every version of the KV
-  app is also built with `--replace-dep` and run on upstream basic-cli. This is discipline, not
+- **The app's header names basic-cli-dst from the first line of code.** Until the subset is
+  fixed, basic-cli-dst is an untrimmed copy of the pinned upstream platform, and builds use
+  `--replace-dep` to upstream as usual. Trimming it later only deletes, so the app's source,
+  header included, never changes.
+- **Safeguard once the sim exists: keep running on upstream.** Every later version of the KV app
+  is also built with `--replace-dep` and run on upstream basic-cli. This is discipline, not
   proof: it catches changes that only make sense because of the sim, i.e. the co-design that
-  FoundationDB (Flow) and TigerBeetle (I/O interfaces, TigerStyle) rely on. Debugging stays in
-  the sim: when upstream fails and the sim doesn't, make the sim reproduce it, then debug there.
+  FoundationDB (Flow) and TigerBeetle (I/O interfaces, TigerStyle) rely on. From then on,
+  debugging moves to the sim: when upstream fails and the sim doesn't, make the sim reproduce
+  it, then debug there.
 - **CI (once the repo has a remote, the sim host and a first app exist):** on every push, build
   the app against basic-cli-dst and with `--replace-dep`, run the workload on both hosts, and
   compare. One job covers the build sanity check, check 3 and the differential test.
+
+## Concurrency (decided 2026-11-11)
+
+- **The app is blocking basic-cli code.** No `spawn!`, futures or event loop in basic-cli-dst:
+  adding them would break deletions-only, so the app couldn't build against upstream
+  basic-cli, and they would be simulation-specific API (excluded by sub-question 1).
+- **Concurrency goes under sub-question 3** (what the approach can and can't do), possibly as
+  its own chapter: one call in flight per node, so no completion-order races inside a node, only
+  between nodes; how TigerBeetle and Flow differ; Roc's plan (host-owned stackful scheduling,
+  0.2.0) and why the sim host carries over to it; baton's `Fiber.spawn!` as a feasibility probe.
+  Sources in [findings.md](findings.md) ("Concurrency model", "Roc's concurrency plan").
+- **Considered and dropped:** a concurrent platform of our own with a sim host and a simple
+  OS-thread real host (loses "runs on upstream basic-cli"); real coroutines on io_uring (too
+  much systems work for the time); an event loop in the app (sans-IO, which the criteria say the
+  app shouldn't need).
+- **Threat to validity:** blocking nodes cover a narrower bug space than apps with concurrency
+  inside a node. The evaluation targets cross-node bugs (message order, crashes, partitions,
+  timeouts), which blocking code keeps.
 
 ## Raft app
 
@@ -190,6 +221,14 @@ it behaves as it should. Where Raft fits in is still open.
 - **Overnight:** one process per seed (isolates crashes), with only failing seeds recorded:
   `seq 1 N | parallel -j16 '... || echo {} >> failing-seeds.txt'`. A seed *is* the
   recording; replay with `--seed N --trace`.
+- **Idea for the end (2026-11-09), not planned:** test the KV store on the real host with
+  Jepsen (open source, github.com/jepsen-io/jepsen) and see whether it finds bugs the
+  simulation missed. Jepsen is black-box: real processes, real faults such as partitions and
+  kills, and Knossos/Elle check the client histories. A Jepsen bug the sim missed would be
+  evidence of a gap in the fault model or the checker; Jepsen finding nothing is weak evidence
+  for the sim. Compare [Jepsen: etcd 3.4.3](https://jepsen.io/analyses/etcd-3.4.3) (C39KVHRX).
+  Needs a Clojure test harness (client, nemesis) and a cluster of VMs or containers, so only if
+  there's time left.
 
 ## Code style (app)
 

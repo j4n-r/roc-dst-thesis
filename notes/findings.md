@@ -74,6 +74,12 @@ node under a seeded scheduler and virtual time.
 - Recursive app loop: ~225k iterations per node on a 256 KB stack, i.e. constant stack.
 - Cost: 10M virtual ms took 58.5 s wall (10.5 s user, 19.1 s sys) for 748k sends, mostly
   thread handoffs.
+- **`Fiber.spawn!` (2026-11-11):** Go-style concurrency inside a node with no async/await. The
+  app boxes a `() => {}` and the host runs it on its own fiber (thread + baton) by passing the box
+  back through a second platform entry point, `roc_run_fiber`. With 3 nodes × 2 fibers (relay +
+  heartbeat), seeds 1–200 each run twice gave 0 mismatches. Every heartbeat went out on schedule
+  while the relay was blocked in `recv!`. Each box was freed once, and the old app's 200 trace
+  hashes were unchanged. Fibers can't communicate yet (no channels).
 
 ## Probe: assertions
 
@@ -110,6 +116,81 @@ node under a seeded scheduler and virtual time.
   seed replaces the capture.
 - **Difference to this thesis:** these are scripted, single-instance tests. The thesis uses
   seeded exploration with many instances, injected faults and virtual time.
+
+## Concurrency model: TigerBeetle, Flow, Roc (read 2026-11-11)
+
+Read in `dst_sources/tigerbeetle`, `dst_sources/foundationdb` and `roc_sources/basic-cli`
+(`c8ce0b5`).
+
+| | TigerBeetle | FoundationDB Flow | Roc + basic-cli (this thesis) |
+|---|---|---|---|
+| App code looks like | explicit callbacks | straight-line code with `wait()` | straight-line code with blocking `!` calls |
+| What turns it into events | the programmer | the actor compiler (C++ → callback state machines) | the sim host, which parks the node's thread inside the hosted call |
+| Threads | one; the kernel does the I/O (io_uring) | one | real: the app runs on one thread (the host has helpers, e.g. DNS workers); sim: one OS thread per node, never two running at once |
+| Concurrency inside one node | many I/Os in flight | many actors; `choose`/`when` is a select | one call at a time, no select |
+| How the sim is swapped in | comptime `IO`/`MessageBus`/`Storage` types | `g_network` is `Net2` (real) or `Sim2` (sim) | platform/host swap (`--replace-dep`) |
+| Who decides the order in the sim | `Cluster.tick()` + PRNG | `Sim2::runLoop`: task queue by time and priority, plus `deterministicRandom()` | baton scheduler + PRNG |
+
+- **TigerBeetle:** the main loop is `while (true) { replica.tick(); io.run_for_ns(tick_ms); }`
+  (`src/tigerbeetle/main.zig:522`). I/O calls only queue an io_uring entry, and callbacks run
+  one at a time on the main thread (`src/io/linux.zig:90`). The VOPR instantiates the same
+  `ReplicaType` with simulated types (`src/testing/cluster.zig:68`).
+- **Flow:** reads like blocking code, but the actor compiler rewrites it into callbacks.
+  `Sim2::delay` adds random "buggified" delays (`fdbrpc/sim2.actor.cpp:1068`), and `runLoop`
+  jumps virtual time to the next timer (`:1382`).
+- **basic-cli really blocks:** TCP waits in `poll()` on one socket in 10 ms slices
+  (`src/socket.rs:17`), and HTTP runs `block_on` on a current-thread tokio runtime
+  (`src/http.rs:36`, `:278`).
+- **Order is still nondeterministic in Roc.** Roc removes nondeterminism inside the language
+  (see Zulip), but not message order, I/O completion order or timeouts. In all three systems one
+  boundary decides the order, and in the sim the seed decides it. Roc's type system enforces that
+  boundary; TigerBeetle and Flow rely on discipline. Because a basic-cli node has one call in
+  flight, there is no completion-order race inside a node, only between nodes: which message
+  lands first, whether `recv!` gets data or times out, what `now!` returns.
+
+## Roc's concurrency plan (read 2026-11-11)
+
+Sources: a Roc Zulip thread started by Raz asking about async I/O platforms (Richard Feldman,
+souf, Luke Boswell, Romain Lepert; date: TODO, needed for citing) and Luke's summary
+[gist](https://gist.github.com/lukewilliamboswell/304c57045fa0116c1a94a1baddcaf469) "Async,
+Concurrency, and Coroutines in Roc", compiled with Claude from the Zulip threads "stackful
+coroutines in hosts" (Sep 2024 – Feb 2025) and "async + coroutines" (Oct 2025). Luke: "I'm not
+sure this is super accurate […] but it mostly looks ok to me." The "Effect Interpreters" section
+of [roc-lang.org/plans](https://www.roc-lang.org/plans) (effects return a continuation closure,
+like Rust's async state machines) is the older proposal and doesn't match this.
+
+- **Roc stays synchronous** (gist): "Effects are just calls. Whatever concurrency exists is
+  provided by the platform." The compiler has no `async`, `await`, `Task`, futures,
+  continuations or coroutine scheduling.
+- **Two mechanisms** (gist):
+  1. *Host-driven coroutines:* the host runs Roc on stackful coroutines; a hosted call that hits
+     I/O suspends the coroutine until the I/O is done. Roc never knows. Prototype:
+     [roc-coro-webserver](https://github.com/bhansconnect/roc-coro-webserver) (Brendan
+     Hansknecht).
+  2. *Roc-requested concurrency:* the platform exposes hosted effects such as
+     `Thread.spawn! : Box(({} -> {})) => ThreadId` and channels. Work crosses the boundary as a
+     boxed callable (`RocErasedCallable` in glue); the exact API is platform design.
+- **Richard: mechanism 1 is the direction**, for "a Go-style experience of 'I/O is automatically
+  nonblocking without needing to write async or await'". He wants to work on it after 0.1.0
+  ("on track to be later this year") and make concurrency "a major theme of the 0.2.0 release".
+- **Compiler work is still needed** for "the equivalent of a type-safe Promise.all from JS",
+  i.e. running several calls concurrently and getting each typed result back. No API is
+  designed yet. souf proposed `run_async! : (() => a) => Future a` and
+  `wait_any! : List (Future a) => (Future a, a)`, with `race`/`all` as pure Roc on top; a
+  `List(Future a)` can't hold futures of different result types, which is presumably where the
+  compiler work comes in (inferred, not stated).
+- **Why stackful over state machines** (Richard): a real stack gives full stack traces for free.
+  Rust-style async loses the call history at every I/O point unless every I/O defensively
+  records the stack. In browser Wasm it stays slow until the stack-switching proposal lands
+  (WASI 0.3's async ABI doesn't help the browser).
+- **For the thesis:**
+  - The sim host is a mechanism-1 host with a seeded scheduler and virtual time, so DST fits
+    Roc's planned concurrency model instead of being bolted on. Use as motivation.
+  - Baton's `Fiber.spawn!` (see the baton section) is mechanism 2 on today's compiler: the
+    `Box(fn)` boundary, stored and called back later through a second entry point, freed
+    exactly once. Its fibers are OS threads run one at a time, not real coroutines.
+  - Cite the Zulip thread for the plan, the gist for the mechanisms, and the plans page only as
+    the superseded proposal.
 
 ## Will Wilson on building your own simulator (source and date: TODO, needed for citing)
 
