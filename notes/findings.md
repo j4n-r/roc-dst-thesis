@@ -239,6 +239,29 @@ like Rust's async state machines) is the older proposal and doesn't match this.
   - Cite the Zulip thread for the plan, the gist for the mechanisms, and the plans page only as
     the superseded proposal.
 
+## Disk writes: TigerBeetle vs. basic-cli (read 2026-11-12)
+
+Read in `dst_sources/tigerbeetle` and `roc_sources/basic-cli` (`c8ce0b5`).
+
+| | TigerBeetle | Roc + basic-cli |
+|---|---|---|
+| Write call | `write_sectors(callback, write, buffer, zone, offset)` returns `void`; the callback gets no error (`src/storage.zig:348`) | `Path.write_bytes!`, `Path.append_bytes!`, `File.Writer.flush!` return `Try({}, …IOErr…)` |
+| Write error | the process stops: `EIO` panics ("latent sector error"), a full disk is fatal (`src/storage.zig:392`) | returned to the app, which must handle it or pass it on with `?` |
+| Success means | durable: the data file is opened with `O_DSYNC` and Direct I/O (`src/io/linux.zig:1432`) | the OS accepted the bytes (page cache). No call fsyncs: `write_bytes!` is Rust's `fs::write`, `flush!` "does not force them to the storage device", `append_bytes!` is "not atomic or durable" |
+| Wrong data on read | expected: checksums on every read, repair from other replicas | not detected unless the app adds checksums |
+| Sim faults | read/write faults, misdirected writes, crash faults (`src/testing/storage.zig:70`) | none yet |
+
+- **Why TigerBeetle returns no error:** real disks fail by returning wrong data, not by error
+  codes, so the app checks what it reads instead of trusting the write. Write errors are
+  fail-stop.
+- **Consequence for a Raft app on basic-cli:** Raft must persist `currentTerm`, `votedFor` and the
+  log before answering. basic-cli can make this survive a process crash (the page cache
+  survives), but not power loss or a kernel crash. The app has no way to force data to disk.
+- **Consequence for the sim's fault model:** a crashed node keeps every write the OS accepted.
+  Losing unsynced writes (machine crash) would be a fault the app can't defend against through
+  basic-cli: a constraint for sub-question 3, not an app bug. Read corruption only makes sense
+  if the app checksums its data.
+
 ## Will Wilson on building your own simulator (source and date: TODO, needed for citing)
 
 Question asked: build your own simulator (FoundationDB/TigerBeetle style) or use a
