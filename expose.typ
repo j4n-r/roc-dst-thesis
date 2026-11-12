@@ -9,11 +9,11 @@
 #align(center)[
   #text(size: 13pt, weight: "bold")[Exposé: Bachelor's Thesis] \
   Jan Rüggeberg, student ID #sys.inputs.at("student-id", default: "[student ID]") \
-  #text(size: 10pt)[HWR Berlin · Supervisor: Prof. Dr. Alexander Eck · 3 November 2026]
+  #text(size: 10pt)[HWR Berlin · Supervisor: Prof. Dr. Alexander Eck · 12 November 2026]
 ]
 
-*Proposed title.* _The Platform as Simulation Boundary: How Suitable Is Roc's Platform Model
-for Deterministic Simulation Testing of Distributed Systems?_
+*Proposed title.* _Deterministic Simulation Testing of Distributed Systems: Evaluating the
+Language-Enforced I/O Boundary of the Roc Programming Language_
 
 *Problem.* Bugs in distributed systems depend on message order, timing, crashes and network
 faults, so they are hard to reproduce. Deterministic simulation testing (DST) runs the whole
@@ -22,27 +22,32 @@ Existing approaches control nondeterminism at different levels: in the applicati
 architecture (FoundationDB, TigerBeetle), in a replaced runtime or library (madsim, turmoil),
 at the system-call level (Shadow) or in a deterministic hypervisor (Antithesis). They differ in
 where the simulation boundary sits and in what that asks of the application. In Roc,
-an application gets all of its I/O primitives from its _platform_; the language offers no
-other way to perform I/O. That boundary could serve as the simulation boundary: only the
-platform is swapped, so the same application source runs both in production and under
+an application gets all of its I/O primitives from its execution environment, which Roc calls
+the _platform_; the language offers no other way to perform I/O. This language-enforced I/O boundary could serve as the simulation boundary: only the
+platform is swapped, so the same application source runs both on Roc's default platform, basic-cli, and under
 simulation. Roc projects already use alternative hosts or test modes for scripted tests, but
 no work was found that uses this boundary for seeded simulation of a distributed system.
 
-*Goal.* The thesis answers: _To what extent is Roc's platform model suitable for deterministic
-simulation testing of distributed systems?_ Sub-questions: (1) Can a distributed system run
-from identical source, using only a subset of basic-cli and no simulation-specific code, in
-production and under deterministic simulation? (2) Which sources of nondeterminism does the
-platform boundary control, and where can they still leak, for example in the host, the
-compiler or dependencies? (3) Which restrictions does the approach place on the application
-and its dependencies?
+*Goal.* The thesis answers: _To what extent is Roc's language-enforced I/O boundary suitable
+for deterministic simulation testing of distributed systems?_ Sub-questions: (1) To what extent can the same
+distributed application code run unchanged both in Roc's default execution environment
+(the basic-cli platform) and in a prototype deterministic simulation environment? (2) Which
+sources of nondeterminism relevant to replay in the case study can the prototype control
+through this I/O boundary, and under what assumptions? (3) In the case
+study, which constraints does DST impose on the application's design and on its choice and use
+of dependencies?
 
 *Approach.*
-+ Derive evaluation criteria from DST practice and research on flaky tests: the sources of nondeterminism (for
-  example clock, randomness, scheduling, network, disk and iteration order) and the practices
-  that existing approaches require of the application and its dependencies.
++ Analyse the literature on DST and flaky tests, guided by: which sources of nondeterminism
+  visible to application code do existing DST approaches and studies report, and how do they
+  control them? This yields the evaluation criteria (sources such as clock, randomness,
+  scheduling, network, disk and iteration order, and practices required of the application).
 + Build a simulation host for a subset of Roc's basic-cli platform (seeded scheduler,
-  virtual time, network faults, complete trace) and a Raft key-value store as case study.
-+ Evaluate: the app runs unchanged on upstream basic-cli and in the simulation; one seed
+  virtual time, network faults, complete trace) and a Raft key-value store as case study. With only blocking I/O, bugs
+  arise only from interleavings between nodes, and Raft exercises exactly these. It is also the
+  standard teaching system for distributed systems: simple to specify, but error-prone to
+  implement.
++ Evaluate: how much of the app's code runs unchanged on upstream basic-cli and in the simulation; one seed
   reproduces an identical trace; an injected Raft bug is found and replayed from its seed;
   the client operations are checked for linearizability; an unmodified third-party package works in both.
 + Apply the criteria to the Roc approach, using the prototype and the host code, and discuss
