@@ -14,7 +14,7 @@ Everything below this line is LLM-generated.
 
 This repo contains most of the work for my bachelor thesis about deterministic simulation testing with roc.
 
-- [expose.typ](expose.typ): the one-page exposé (build command at the top of the file; needs `.env`, see `.env.example`; earlier long versions are in git history)
+- [expose.typ](expose.typ): the one-page exposé (build commands at the top of the file; the university version needs `.env`, see `.env.example`; earlier long versions are in git history). [expose-public.pdf](expose-public.pdf) is the shareable build, without university, student ID or supervisor.
 - [notes/reading.md](notes/reading.md): Zotero triage (essential, cite only, skip) and missing sources
 - [notes/design.md](notes/design.md): design decisions and their reasons
 - [notes/criteria.md](notes/criteria.md): evaluation criteria (sources of nondeterminism, practices required of the app, simulator properties)

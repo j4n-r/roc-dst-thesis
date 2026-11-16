@@ -1,19 +1,29 @@
 // Exposé (one A4 page). The student ID is kept out of this public repo, in .env
-// (see .env.example). Build with:
+// (see .env.example). Build the version for the university with:
 // sh -c '. ./.env && typst compile --input student-id="$STUDENT_ID" expose.typ'
-#set page(paper: "a4", margin: (x: 2.5cm, y: 2cm))
+// Without a student ID it builds the shareable version, with no university, ID or
+// supervisor in the header; it is committed as expose-public.pdf:
+// typst compile expose.typ expose-public.pdf
+#set page(paper: "a4", margin: (x: 2cm, y: 1.7cm))
 #set text(size: 11pt, lang: "en")
 #set par(justify: true, leading: 0.65em, spacing: 1.4em)
 #set enum(spacing: 0.8em)
 
+#let student-id = sys.inputs.at("student-id", default: none)
+#let date = "13 November 2026"
 #align(center)[
   #text(size: 13pt, weight: "bold")[Exposé: Bachelor's Thesis] \
-  Jan Rüggeberg, student ID #sys.inputs.at("student-id", default: "[student ID]") \
-  #text(size: 10pt)[HWR Berlin · Supervisor: Prof. Dr. Alexander Eck · 12 November 2026]
+  #if student-id != none [
+    Jan Rüggeberg, student ID #student-id \
+    #text(size: 10pt)[HWR Berlin · Supervisor: Prof. Dr. Alexander Eck · #date]
+  ] else [
+    Jan Rüggeberg \
+    #text(size: 10pt)[#date]
+  ]
 ]
 
 *Proposed title.* _Deterministic Simulation Testing of Distributed Systems: Evaluating the
-Language-Enforced I/O Boundary of the Roc Programming Language_
+Application-Platform Boundary of the Roc Programming Language_
 
 *Problem.* Bugs in distributed systems depend on message order, timing, crashes and network
 faults, so they are hard to reproduce. Deterministic simulation testing (DST) runs the whole
@@ -22,18 +32,19 @@ Existing approaches control nondeterminism at different levels: in the applicati
 architecture (FoundationDB, TigerBeetle), in a replaced runtime or library (madsim, turmoil),
 at the system-call level (Shadow) or in a deterministic hypervisor (Antithesis). They differ in
 where the simulation boundary sits and in what that asks of the application. In Roc,
-an application gets all of its I/O primitives from its execution environment, which Roc calls
-the _platform_; the language offers no other way to perform I/O. This language-enforced I/O boundary could serve as the simulation boundary: only the
+every application runs on a _platform_, its execution environment. The platform provides all
+I/O primitives (the language offers no other way to perform I/O) and also decides when the
+application's code runs and how its memory is allocated. This application-platform boundary could serve as the simulation boundary: only the
 platform is swapped, so the same application source runs both on Roc's default platform, basic-cli, and under
 simulation. Roc projects already use alternative hosts or test modes for scripted tests, but
 no work was found that uses this boundary for seeded simulation of a distributed system.
 
-*Goal.* The thesis answers: _To what extent is Roc's language-enforced I/O boundary suitable
+*Goal.* The thesis answers: _To what extent is Roc's application-platform boundary suitable
 for deterministic simulation testing of distributed systems?_ Sub-questions: (1) To what extent can the same
 distributed application code run unchanged both in Roc's default execution environment
 (the basic-cli platform) and in a prototype deterministic simulation environment? (2) Which
 sources of nondeterminism relevant to replay in the case study can the prototype control
-through this I/O boundary, and under what assumptions? (3) In the case
+through this boundary, and under what assumptions? (3) In the case
 study, which constraints does DST impose on the application's design and on its choice and use
 of dependencies?
 
@@ -41,17 +52,20 @@ of dependencies?
 + Analyse the literature on DST and flaky tests, guided by: which sources of nondeterminism
   visible to application code do existing DST approaches and studies report, and how do they
   control them? This yields the evaluation criteria (sources such as clock, randomness,
-  scheduling, network, disk and iteration order, and practices required of the application).
-+ Build a simulation host for a subset of Roc's basic-cli platform (seeded scheduler,
-  virtual time, network faults, complete trace) and a Raft key-value store as case study. With only blocking I/O, bugs
-  arise only from interleavings between nodes, and Raft exercises exactly these. It is also the
-  standard teaching system for distributed systems: simple to specify, but error-prone to
-  implement.
-+ Evaluate: how much of the app's code runs unchanged on upstream basic-cli and in the simulation; one seed
+  scheduling, network, disk and iteration order, practices required of the application, and properties the simulator needs).
++ Build a Raft key-value store as case study and a simulation host for the subset of basic-cli
+  it uses, with the simulator properties from step 1 (e.g. seeded scheduler, virtual time,
+  network faults, complete trace). With only blocking I/O, concurrency
+  bugs arise only between nodes, not within one, and Raft exercises exactly these. It is also the
+  standard teaching system: simple to specify, but error-prone to
+  implement. During the build, log every design or dependency decision DST
+  forces on the app (for sub-question 3).
++ Evaluate with checks derived from steps 1 and 2, e.g.: how much of the app's code runs unchanged on upstream basic-cli and in the simulation; one seed
   reproduces an identical trace; an injected Raft bug is found and replayed from its seed;
   the client operations are checked for linearizability; an unmodified third-party package works in both.
-+ Apply the criteria to the Roc approach, using the prototype and the host code, and discuss
-  the results against the existing approaches, which form the related work.
++ Apply the criteria to the Roc approach, using the prototype and the host code, compare the decision log with
+  the practices from step 1, and discuss the results against the existing approaches, which form
+  the related work.
 
 *Key literature.*
 #set text(size: 10pt)

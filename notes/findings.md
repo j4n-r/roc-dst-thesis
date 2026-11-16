@@ -83,10 +83,10 @@ node under a seeded scheduler and virtual time.
 
 ## Probe: assertions
 
-| | `--opt=speed` (default) | `--opt=dev` |
-|---|---|---|
-| inline `expect` | stripped | `[ROC EXPECT] expect failed`, keeps running |
-| `crash "msg"` | `[ROC CRASHED] msg`, exit 1 | same |
+|                 | `--opt=speed` (default)     | `--opt=dev`                                 |
+| --------------- | --------------------------- | ------------------------------------------- |
+| inline `expect` | stripped                    | `[ROC EXPECT] expect failed`, keeps running |
+| `crash "msg"`   | `[ROC CRASHED] msg`, exit 1 | same                                        |
 
 `crash` ends the whole process, so a sim needs one process per seed or a custom `roc_crashed`.
 
@@ -134,11 +134,11 @@ Faults come from the seeded RNG and are grouped as in the UI:
   data") and write corruption ("a write I/O will write corrupted data").
 - **Process:** crash ("a replica process will crash, and then later restart").
 
-| Scenario (`?scenario=`) | Seed | Replicas / clients | Delay | Loss | Replay | Partition | Read lat. | Write lat. | Read corr. | Write corr. | Crash |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| City Breeze (0) | `0x0000EA51` | 5 / 3 | 1–5 ms | 0% | 0% | 0% | 1–9 ms | 1–11 ms | 0% | 0% | 0.00% |
-| Red Desert (1) | `0x00DE5E87` | 6 / 4 | 2–10 ms | 13% | 2% | 1% | 0–14 ms | 1–19 ms | 0% | 0% | 0.10% |
-| Radioactive (2) | `0xCC063418` | 5 / 5 | 0–6 ms | 26% | 1% | 0% | 0–14 ms | 1–67 ms | 8% | 9% | 0.01% |
+| Scenario (`?scenario=`) | Seed         | Replicas / clients | Delay   | Loss | Replay | Partition | Read lat. | Write lat. | Read corr. | Write corr. | Crash |
+| ----------------------- | ------------ | ------------------ | ------- | ---- | ------ | --------- | --------- | ---------- | ---------- | ----------- | ----- |
+| City Breeze (0)         | `0x0000EA51` | 5 / 3              | 1–5 ms  | 0%   | 0%     | 0%        | 1–9 ms    | 1–11 ms    | 0%         | 0%          | 0.00% |
+| Red Desert (1)          | `0x00DE5E87` | 6 / 4              | 2–10 ms | 13%  | 2%     | 1%        | 0–14 ms   | 1–19 ms    | 0%         | 0%          | 0.10% |
+| Radioactive (2)         | `0xCC063418` | 5 / 5              | 0–6 ms  | 26%  | 1%     | 0%        | 0–14 ms   | 1–67 ms    | 8%         | 9%          | 0.01% |
 
 City Breeze is VSR with no faults, Red Desert adds "process crashes and network partitions, but no
 storage faults", and Radioactive adds per-replica storage corruption that the UI says Raft or
@@ -169,14 +169,14 @@ lifecycle).
 Read in `dst_sources/tigerbeetle`, `dst_sources/foundationdb` and `roc_sources/basic-cli`
 (`c8ce0b5`).
 
-| | TigerBeetle | FoundationDB Flow | Roc + basic-cli (this thesis) |
-|---|---|---|---|
-| App code looks like | explicit callbacks | straight-line code with `wait()` | straight-line code with blocking `!` calls |
-| What turns it into events | the programmer | the actor compiler (C++ → callback state machines) | the sim host, which parks the node's thread inside the hosted call |
-| Threads | one; the kernel does the I/O (io_uring) | one | real: the app runs on one thread (the host has helpers, e.g. DNS workers); sim: one OS thread per node, never two running at once |
-| Concurrency inside one node | many I/Os in flight | many actors; `choose`/`when` is a select | one call at a time, no select |
-| How the sim is swapped in | comptime `IO`/`MessageBus`/`Storage` types | `g_network` is `Net2` (real) or `Sim2` (sim) | platform/host swap (`--replace-dep`) |
-| Who decides the order in the sim | `Cluster.tick()` + PRNG | `Sim2::runLoop`: task queue by time and priority, plus `deterministicRandom()` | baton scheduler + PRNG |
+|                                  | TigerBeetle                                | FoundationDB Flow                                                              | Roc + basic-cli (this thesis)                                                                                                     |
+| -------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| App code looks like              | explicit callbacks                         | straight-line code with `wait()`                                               | straight-line code with blocking `!` calls                                                                                        |
+| What turns it into events        | the programmer                             | the actor compiler (C++ → callback state machines)                             | the sim host, which parks the node's thread inside the hosted call                                                                |
+| Threads                          | one; the kernel does the I/O (io_uring)    | one                                                                            | real: the app runs on one thread (the host has helpers, e.g. DNS workers); sim: one OS thread per node, never two running at once |
+| Concurrency inside one node      | many I/Os in flight                        | many actors; `choose`/`when` is a select                                       | one call at a time, no select                                                                                                     |
+| How the sim is swapped in        | comptime `IO`/`MessageBus`/`Storage` types | `g_network` is `Net2` (real) or `Sim2` (sim)                                   | platform/host swap (`--replace-dep`)                                                                                              |
+| Who decides the order in the sim | `Cluster.tick()` + PRNG                    | `Sim2::runLoop`: task queue by time and priority, plus `deterministicRandom()` | baton scheduler + PRNG                                                                                                            |
 
 - **TigerBeetle:** the main loop is `while (true) { replica.tick(); io.run_for_ns(tick_ms); }`
   (`src/tigerbeetle/main.zig:522`). I/O calls only queue an io_uring entry, and callbacks run
@@ -210,11 +210,11 @@ like Rust's async state machines) is the older proposal and doesn't match this.
   provided by the platform." The compiler has no `async`, `await`, `Task`, futures,
   continuations or coroutine scheduling.
 - **Two mechanisms** (gist):
-  1. *Host-driven coroutines:* the host runs Roc on stackful coroutines; a hosted call that hits
+  1. _Host-driven coroutines:_ the host runs Roc on stackful coroutines; a hosted call that hits
      I/O suspends the coroutine until the I/O is done. Roc never knows. Prototype:
      [roc-coro-webserver](https://github.com/bhansconnect/roc-coro-webserver) (Brendan
      Hansknecht).
-  2. *Roc-requested concurrency:* the platform exposes hosted effects such as
+  2. _Roc-requested concurrency:_ the platform exposes hosted effects such as
      `Thread.spawn! : Box(({} -> {})) => ThreadId` and channels. Work crosses the boundary as a
      boxed callable (`RocErasedCallable` in glue); the exact API is platform design.
 - **Richard: mechanism 1 is the direction**, for "a Go-style experience of 'I/O is automatically
@@ -243,13 +243,13 @@ like Rust's async state machines) is the older proposal and doesn't match this.
 
 Read in `dst_sources/tigerbeetle` and `roc_sources/basic-cli` (`c8ce0b5`).
 
-| | TigerBeetle | Roc + basic-cli |
-|---|---|---|
-| Write call | `write_sectors(callback, write, buffer, zone, offset)` returns `void`; the callback gets no error (`src/storage.zig:348`) | `Path.write_bytes!`, `Path.append_bytes!`, `File.Writer.flush!` return `Try({}, …IOErr…)` |
-| Write error | the process stops: `EIO` panics ("latent sector error"), a full disk is fatal (`src/storage.zig:392`) | returned to the app, which must handle it or pass it on with `?` |
-| Success means | durable: the data file is opened with `O_DSYNC` and Direct I/O (`src/io/linux.zig:1432`) | the OS accepted the bytes (page cache). No call fsyncs: `write_bytes!` is Rust's `fs::write`, `flush!` "does not force them to the storage device", `append_bytes!` is "not atomic or durable" |
-| Wrong data on read | expected: checksums on every read, repair from other replicas | not detected unless the app adds checksums |
-| Sim faults | read/write faults, misdirected writes, crash faults (`src/testing/storage.zig:70`) | none yet |
+|                    | TigerBeetle                                                                                                               | Roc + basic-cli                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Write call         | `write_sectors(callback, write, buffer, zone, offset)` returns `void`; the callback gets no error (`src/storage.zig:348`) | `Path.write_bytes!`, `Path.append_bytes!`, `File.Writer.flush!` return `Try({}, …IOErr…)`                                                                                                      |
+| Write error        | the process stops: `EIO` panics ("latent sector error"), a full disk is fatal (`src/storage.zig:392`)                     | returned to the app, which must handle it or pass it on with `?`                                                                                                                               |
+| Success means      | durable: the data file is opened with `O_DSYNC` and Direct I/O (`src/io/linux.zig:1432`)                                  | the OS accepted the bytes (page cache). No call fsyncs: `write_bytes!` is Rust's `fs::write`, `flush!` "does not force them to the storage device", `append_bytes!` is "not atomic or durable" |
+| Wrong data on read | expected: checksums on every read, repair from other replicas                                                             | not detected unless the app adds checksums                                                                                                                                                     |
+| Sim faults         | read/write faults, misdirected writes, crash faults (`src/testing/storage.zig:70`)                                        | none yet                                                                                                                                                                                       |
 
 - **Why TigerBeetle returns no error:** real disks fail by returning wrong data, not by error
   codes, so the app checks what it reads instead of trusting the write. Write errors are
