@@ -15,11 +15,14 @@ Everything below this line is LLM-generated.
 This repo contains most of the work for my bachelor thesis about deterministic simulation testing with roc.
 
 - [expose.typ](expose.typ): the one-page exposé (build commands at the top of the file; the university version needs `.env`, see `.env.example`; earlier long versions are in git history). [expose-public.pdf](expose-public.pdf) is the shareable build, without university, student ID or supervisor.
-- [notes/reading.md](notes/reading.md): Zotero triage (essential, cite only, skip) and missing sources
-- [notes/design.md](notes/design.md): design decisions and their reasons
-- [notes/criteria.md](notes/criteria.md): evaluation criteria (sources of nondeterminism, practices required of the app, simulator properties)
-- [notes/findings.md](notes/findings.md): experiment results, basic-cli facts, prior art, Zulip feedback
-- [notes/open-questions.md](notes/open-questions.md)
+- [notes/](notes/): the author's own notes. [notes/criteria.md](notes/criteria.md): evaluation criteria v1 (sources of nondeterminism, practices required of the app, simulator properties)
+- [llm-notes/](llm-notes/): notes written by AI agents (Amp), recording the author's decisions, reading and experiment results. See its README.
+  - [reading.md](llm-notes/reading.md): Zotero triage (essential, cite only, skip) and missing sources
+  - [design.md](llm-notes/design.md): design decisions and their reasons
+  - [criteria-v0.md](llm-notes/criteria-v0.md): evaluation criteria v0, from Wilson and Luo et al.
+  - [findings.md](llm-notes/findings.md): experiment results, basic-cli facts, prior art, Zulip feedback
+  - [basic-cli.md](llm-notes/basic-cli.md): basic-cli's platform structure
+  - [open-questions.md](llm-notes/open-questions.md)
 - [experiments/](experiments/): `baton` (several blocking nodes under a seeded scheduler, with `Fiber.spawn!` for fibers inside a node; flake and `build.sh`), `platform-compatibility` (unchanged source on upstream), and `subset-link` (full API trim and subset-only host linking)
 - [roc_sources/](roc_sources/): upstream basic-cli and the Roc compiler as git submodules, for
   reading and for the experiments' scripts. Clone with `git clone --recurse-submodules`, or run
@@ -28,4 +31,4 @@ This repo contains most of the work for my bachelor thesis about deterministic s
   their simulators (the VOPR, `fdbserver -r simulation`) by hand. See its README.
 
 Feedback from the Roc Zulip thread "Deterministic simulation testing (DST) with Roc platforms"
-(2026-10-23/24) is summarized in [notes/findings.md](notes/findings.md).
+(2026-10-23/24) is summarized in [llm-notes/findings.md](llm-notes/findings.md).
